@@ -1,22 +1,14 @@
 import * as BackgroundTask from "expo-background-task";
 import * as Notifications from "expo-notifications";
-import { openDatabaseAsync, type SQLiteDatabase } from "expo-sqlite";
+import { openDatabaseAsync } from "expo-sqlite";
 import * as TaskManager from "expo-task-manager";
 import { Platform } from "react-native";
 
 import i18n from "@/i18n";
-import {
-  listAllRecurringEntries,
-  materializeAllDueRecurringEntries,
-  type MaterializedRecurringEntry,
-} from "@/data/cashflow/repository";
+import { materializeAllDueRecurringEntries, type MaterializedRecurringEntry } from "@/data/cashflow/repository";
 import { migrateCashflowDatabase } from "@/data/cashflow/schema";
-import {
-  DEFAULT_NOTIFICATION_CHANNEL_ID,
-  prepareDefaultNotificationChannelAsync,
-  requestNotificationPermissionsAsync,
-} from "@/lib/notifications";
-import { parseDateKey } from "@/lib/date";
+import { reconcileLocalRemindersAsync } from "@/lib/localReminders";
+import { prepareDefaultNotificationChannelAsync } from "@/lib/notifications";
 
 const DATABASE_NAME = "ethos-cashflow.db";
 const AUTOMATIC_ENTRY_TASK = "ethos-automatic-entries";
@@ -47,7 +39,7 @@ export async function notifyMaterializedAutomaticEntriesAsync(entries: Materiali
   })));
 }
 
-export async function syncAutomaticEntryRemindersAsync(db: SQLiteDatabase) {
+export async function cancelLegacyAutomaticEntryRemindersAsync() {
   if (Platform.OS !== "ios" && Platform.OS !== "android") return;
 
   const scheduled = await Notifications.getAllScheduledNotificationsAsync();
@@ -56,36 +48,6 @@ export async function syncAutomaticEntryRemindersAsync(db: SQLiteDatabase) {
       .filter((notification) => notification.content.data?.kind === REMINDER_KIND)
       .map((notification) => Notifications.cancelScheduledNotificationAsync(notification.identifier)),
   );
-  if (!await notificationsAreAllowedAsync()) return;
-  await prepareDefaultNotificationChannelAsync();
-
-  const now = new Date();
-  const recurringEntries = await listAllRecurringEntries(db);
-  await Promise.all(recurringEntries.map(async (entry) => {
-    const date = parseDateKey(entry.nextDate);
-    const [hour, minute] = entry.reminderTime.split(":").map(Number);
-    date.setHours(hour, minute, 0, 0);
-    if (date <= now) return;
-
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: i18n.t("autoEntry.reminderTitle"),
-        body: i18n.t("autoEntry.reminderBody", { name: entry.name }),
-        sound: "default",
-        data: {
-          kind: REMINDER_KIND,
-          recurringEntryId: entry.id,
-          managementId: entry.managementId,
-          url: "/forms/automatic-entry",
-        },
-      },
-      trigger: {
-        type: Notifications.SchedulableTriggerInputTypes.DATE,
-        date,
-        channelId: Platform.OS === "android" ? DEFAULT_NOTIFICATION_CHANNEL_ID : undefined,
-      },
-    });
-  }));
 }
 
 async function runAutomaticEntriesAsync() {
@@ -94,7 +56,8 @@ async function runAutomaticEntriesAsync() {
     await migrateCashflowDatabase(db);
     const materialized = await materializeAllDueRecurringEntries(db);
     await notifyMaterializedAutomaticEntriesAsync(materialized);
-    await syncAutomaticEntryRemindersAsync(db);
+    await cancelLegacyAutomaticEntryRemindersAsync();
+    await reconcileLocalRemindersAsync(db);
     return BackgroundTask.BackgroundTaskResult.Success;
   } catch (error) {
     console.error("Failed to process automatic entries in the background", error);
@@ -119,8 +82,4 @@ export async function registerAutomaticEntryBackgroundTaskAsync() {
   await BackgroundTask.registerTaskAsync(AUTOMATIC_ENTRY_TASK, {
     minimumInterval: 60,
   });
-}
-
-export function requestAutomaticEntryNotificationPermissionAsync() {
-  return requestNotificationPermissionsAsync();
 }

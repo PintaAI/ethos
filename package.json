@@ -73,7 +73,7 @@
     "ios": "expo start --dev-client --tunnel --ios",
     "run:android": "expo run:android",
     "build:android": "eas build --profile development --platform android --local --output ./ethos-dev.apk",
-    "build:android:preview": "eas build --profile preview --platform android --local --output ./ethos-preview.apk",
+    "build:android:preview": "eas build --profile preview --platform android",
     "build:ios": "eas build --profile development --platform ios",
     "web": "expo start --web",
     "lint": "expo lint"

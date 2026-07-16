@@ -1,7 +1,6 @@
 import type { SQLiteDatabase } from "expo-sqlite";
-import { reseedDemoCashflowEntries, seedCashflowDatabase } from "./seed";
 
-const DATABASE_VERSION = 8;
+const DATABASE_VERSION = 9;
 
 export async function migrateCashflowDatabase(db: SQLiteDatabase) {
   await db.execAsync("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;");
@@ -136,7 +135,6 @@ export async function migrateCashflowDatabase(db: SQLiteDatabase) {
         management_id TEXT NOT NULL REFERENCES managements(id),
         frequency TEXT NOT NULL,
         next_date TEXT NOT NULL,
-        reminder_time TEXT NOT NULL DEFAULT '09:00',
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         deleted_at TEXT,
@@ -166,12 +164,10 @@ export async function migrateCashflowDatabase(db: SQLiteDatabase) {
       CREATE INDEX IF NOT EXISTS quick_fills_management_idx ON quick_fills(management_id);
     `);
 
-    await seedCashflowDatabase(db);
     currentVersion = 1;
   }
 
   if (currentVersion < 2) {
-    await reseedDemoCashflowEntries(db);
     currentVersion = 2;
   }
 
@@ -189,20 +185,20 @@ export async function migrateCashflowDatabase(db: SQLiteDatabase) {
   }
 
   if (currentVersion < 4) {
-    await db.execAsync("PRAGMA foreign_keys = OFF;");
-    await db.execAsync(`
-      DELETE FROM entries WHERE id LIKE 'wallet-%-entry-%' OR created_by_id = 'local-user-demo';
-      DELETE FROM recurring_entries WHERE id LIKE 'wallet-%' OR management_id IN ('wallet-personal', 'wallet-household', 'wallet-business');
-      DELETE FROM quick_fills WHERE id LIKE 'wallet-%-quick-%';
-      DELETE FROM overall_budgets WHERE id LIKE 'wallet-%-budget-%';
-      DELETE FROM categories WHERE id LIKE 'wallet-%-category-%';
-      DELETE FROM audit_snapshots WHERE management_id IN ('wallet-personal', 'wallet-household', 'wallet-business');
-      DELETE FROM management_members WHERE id LIKE 'wallet-%-member-%' OR user_id = 'local-user-demo';
-      DELETE FROM managements WHERE id IN ('wallet-personal', 'wallet-household', 'wallet-business');
-      DELETE FROM users WHERE id = 'local-user-demo';
-      DELETE FROM app_preferences WHERE key = 'active_management_id' OR key = 'last_pulled_at';
-    `);
-    await db.execAsync("PRAGMA foreign_keys = ON;");
+    await db.withExclusiveTransactionAsync(async (txn) => {
+      await txn.execAsync(`
+        DELETE FROM entries WHERE id LIKE 'wallet-%-entry-%' OR created_by_id = 'local-user-demo';
+        DELETE FROM recurring_entries WHERE id LIKE 'wallet-%' OR management_id IN ('wallet-personal', 'wallet-household', 'wallet-business');
+        DELETE FROM quick_fills WHERE id LIKE 'wallet-%-quick-%';
+        DELETE FROM overall_budgets WHERE id LIKE 'wallet-%-budget-%';
+        DELETE FROM categories WHERE id LIKE 'wallet-%-category-%';
+        DELETE FROM audit_snapshots WHERE management_id IN ('wallet-personal', 'wallet-household', 'wallet-business');
+        DELETE FROM management_members WHERE id LIKE 'wallet-%-member-%' OR user_id = 'local-user-demo';
+        DELETE FROM managements WHERE id IN ('wallet-personal', 'wallet-household', 'wallet-business');
+        DELETE FROM users WHERE id = 'local-user-demo';
+        DELETE FROM app_preferences WHERE key = 'active_management_id' OR key = 'last_pulled_at';
+      `);
+    });
     currentVersion = 4;
   }
 
@@ -265,9 +261,12 @@ export async function migrateCashflowDatabase(db: SQLiteDatabase) {
   }
 
   if (currentVersion < 6) {
-    await db.execAsync(`
-      ALTER TABLE managements ADD COLUMN member_count INTEGER NOT NULL DEFAULT 0;
-    `).catch(() => undefined);
+    const memberCountCol = await db.getFirstAsync<{ name: string }>(
+      "SELECT name FROM pragma_table_info('managements') WHERE name = 'member_count'",
+    );
+    if (!memberCountCol) {
+      await db.execAsync("ALTER TABLE managements ADD COLUMN member_count INTEGER NOT NULL DEFAULT 0;");
+    }
     currentVersion = 6;
   }
 
@@ -289,28 +288,35 @@ export async function migrateCashflowDatabase(db: SQLiteDatabase) {
   }
 
   if (currentVersion < 8) {
-    await db.execAsync(`
-      ALTER TABLE recurring_entries ADD COLUMN reminder_time TEXT NOT NULL DEFAULT '09:00';
-    `).catch(() => undefined);
     currentVersion = 8;
+  }
+
+  if (currentVersion < 9) {
+    const reminderTimeCol = await db.getFirstAsync<{ name: string }>(
+      "SELECT name FROM pragma_table_info('recurring_entries') WHERE name = 'reminder_time'",
+    );
+    if (reminderTimeCol) {
+      await db.execAsync("ALTER TABLE recurring_entries DROP COLUMN reminder_time;");
+    }
+    currentVersion = 9;
   }
 
   await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
 }
 
 export async function clearCashflowDatabase(db: SQLiteDatabase) {
-  await db.execAsync("PRAGMA foreign_keys = OFF;");
-  await db.execAsync(`
-    DELETE FROM entries;
-    DELETE FROM recurring_entries;
-    DELETE FROM quick_fills;
-    DELETE FROM overall_budgets;
-    DELETE FROM categories;
-    DELETE FROM audit_snapshots;
-    DELETE FROM management_members;
-    DELETE FROM managements;
-    DELETE FROM users;
-    DELETE FROM app_preferences;
-  `);
-  await db.execAsync("PRAGMA foreign_keys = ON;");
+  await db.withExclusiveTransactionAsync(async (txn) => {
+    await txn.execAsync(`
+      DELETE FROM entries;
+      DELETE FROM recurring_entries;
+      DELETE FROM quick_fills;
+      DELETE FROM overall_budgets;
+      DELETE FROM categories;
+      DELETE FROM audit_snapshots;
+      DELETE FROM management_members;
+      DELETE FROM managements;
+      DELETE FROM users;
+      DELETE FROM app_preferences;
+    `);
+  });
 }

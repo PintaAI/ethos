@@ -1,4 +1,4 @@
-import { Platform, Pressable, ScrollView, View } from "react-native";
+import { Alert, Platform, Pressable, ScrollView, Share, View } from "react-native";
 import { GlassBox } from "@/components/GlassBox";
 import { Image } from "expo-image";
 import { router, Stack, type Href } from "expo-router";
@@ -13,6 +13,8 @@ import { alpha } from "@/lib/color";
 import { walletImageToIcon } from "@/lib/categoryMapping";
 import { colorsToThemeSet, extractColors } from "@/lib/palette";
 import { getManagementImageSource } from "@/lib/protectedImage";
+import { createManagementInvite } from "@/lib/api/managements";
+import { authBaseURL } from "@/lib/auth-client";
 
 function isPicture(image: string | null): image is string {
   return !!image && !image.startsWith("symbol:");
@@ -63,6 +65,25 @@ export default function WalletFormSheet() {
       });
     } catch (error) {
       console.error("Failed to set active management", error);
+    }
+  };
+
+  const handleShareInvite = async (management: (typeof managements)[number]) => {
+    if (!management.remoteId) {
+      Alert.alert(t("wallet.syncRequiredTitle"), t("wallet.syncRequiredMessage"));
+      return;
+    }
+    try {
+      const { code } = await createManagementInvite(management.remoteId);
+      const inviteLink = `${authBaseURL}/invite?code=${encodeURIComponent(code)}`;
+      await Share.share({
+        title: t("wallet.joinTitle", { name: management.name }),
+        url: inviteLink,
+        message: t("wallet.joinMessage", { name: management.name, link: inviteLink }),
+      });
+    } catch (error) {
+      console.error("Failed to create wallet invite", error);
+      Alert.alert(t("wallet.inviteUnavailableTitle"), t("wallet.inviteUnavailableMessage"));
     }
   };
 
@@ -154,30 +175,44 @@ export default function WalletFormSheet() {
                       {management.name}
                     </Text>
                     <Text className="text-xs" style={{ color: appTheme.colors.muted }}>
-                      {t("wallet.entriesCount", { count: management.entryCount })} · {t("wallet.memberCount", { count: management.memberCount })}
+                      {format(management.balance, { compact: true })} · {t("wallet.memberCount", { count: management.memberCount })}
                     </Text>
                   </View>
-                  <View className="items-end gap-1">
-                    <Text className="text-sm font-bold" style={{ color: management.balance < 0 ? appTheme.colors.negative : appTheme.colors.foreground }}>
-                      {format(management.balance, { compact: true })}
-                    </Text>
-                    {isActive ? (
-                      <Text className="text-xs font-semibold" style={{ color: appTheme.colors.primary }}>
-                        {t("wallet.active")}
-                      </Text>
-                    ) : null}
-                  </View>
+                  {isActive ? (
+                    <View
+                      className="h-7 w-7 items-center justify-center rounded-full"
+                      style={{ backgroundColor: appTheme.colors.primary }}
+                    >
+                      <AppSymbol
+                        name="checkmark"
+                        size={13}
+                        tintColor={appTheme.colors.background}
+                        fallback={<Text className="text-xs font-black" style={{ color: appTheme.colors.background }}>✓</Text>}
+                      />
+                    </View>
+                  ) : null}
                 </View>
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={() => router.push({ pathname: "/forms/wallet/detail", params: { id: management.id } } as Href)}
-                  className="mt-4 min-h-10 items-center justify-center rounded-2xl"
-                  style={{ backgroundColor: rowSurface }}
-                >
-                  <Text className="text-sm font-bold" style={{ color: appTheme.colors.foreground }}>
-                    {t("wallet.manageWallet")}
-                  </Text>
-                </Pressable>
+                <View className="mt-4 flex-row gap-2">
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => router.push({ pathname: "/forms/wallet/detail", params: { id: management.id } } as Href)}
+                    className="min-h-10 flex-1 items-center justify-center rounded-2xl"
+                    style={{ backgroundColor: rowSurface }}
+                  >
+                    <Text className="text-sm font-bold" style={{ color: appTheme.colors.foreground }}>
+                      {t("wallet.manageWallet")}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={t("wallet.inviteLabel")}
+                    onPress={() => handleShareInvite(management)}
+                    className="min-h-10 w-10 items-center justify-center rounded-2xl"
+                    style={{ backgroundColor: alpha(appTheme.colors.primary, appTheme.isDark ? 0.16 : 0.1) }}
+                  >
+                    <AppSymbol name="square.and.arrow.up" size={16} tintColor={appTheme.colors.primary} fallback={<Text style={{ color: appTheme.colors.primary }}>↑</Text>} />
+                  </Pressable>
+                </View>
               </Pressable>
             );
           })}

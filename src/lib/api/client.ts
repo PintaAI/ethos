@@ -11,29 +11,61 @@ export class ApiError extends Error {
   }
 }
 
+const API_TIMEOUT = 30000;
+
 export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   const cookie = authClient.getCookie();
   const isMultipart = typeof FormData !== "undefined" && init.body instanceof FormData;
-  const res = await fetch(`${apiBaseURL}${path}`, {
-    ...init,
-    headers: {
-      ...(isMultipart ? {} : { "Content-Type": "application/json" }),
-      ...(cookie ? { Cookie: cookie } : {}),
-      ...(init.headers ?? {}),
-    },
-    credentials: "omit",
-  });
-  const text = await res.text();
-  let json: { data?: T; error?: string } = {};
-  if (text) {
-    try {
-      json = JSON.parse(text) as { data?: T; error?: string };
-    } catch {
-      json = {};
+
+  const controller = new AbortController();
+  let didTimeout = false;
+  const timeoutId = setTimeout(() => {
+    didTimeout = true;
+    controller.abort();
+  }, API_TIMEOUT);
+
+  const callerSignal = init.signal;
+  const abortFromCaller = () => controller.abort(callerSignal?.reason);
+  if (callerSignal) {
+    if (callerSignal.aborted) {
+      clearTimeout(timeoutId);
+      abortFromCaller();
+    } else {
+      callerSignal.addEventListener("abort", abortFromCaller, { once: true });
     }
   }
-  if (!res.ok) throw new ApiError(res.status, json.error ?? res.statusText);
-  return json.data as T;
+
+  try {
+    const res = await fetch(`${apiBaseURL}${path}`, {
+      ...init,
+      signal: controller.signal,
+      headers: {
+        ...(isMultipart ? {} : { "Content-Type": "application/json" }),
+        ...(cookie ? { Cookie: cookie } : {}),
+        ...(init.headers ?? {}),
+      },
+      credentials: "omit",
+    });
+    const text = await res.text();
+    let json: { data?: T; error?: string } = {};
+    if (text) {
+      try {
+        json = JSON.parse(text) as { data?: T; error?: string };
+      } catch {
+        json = {};
+      }
+    }
+    if (!res.ok) throw new ApiError(res.status, json.error ?? res.statusText);
+    return json.data as T;
+  } catch (error) {
+    if (didTimeout) {
+      throw new ApiError(408, "Request timed out");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+    callerSignal?.removeEventListener("abort", abortFromCaller);
+  }
 }
 
 export function apiGet<T>(path: string, init: RequestInit = {}): Promise<T> {

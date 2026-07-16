@@ -39,6 +39,7 @@ export type ProfileContentBodyProps = {
   updateStatus: string;
   isCheckingForUpdate: boolean;
   isUpdatingPhoto: boolean;
+  notificationsEnabled: boolean | null;
   onSignOut: () => void;
   onSyncNow: () => void;
   onCheckForUpdates: () => void;
@@ -47,6 +48,7 @@ export type ProfileContentBodyProps = {
   onContactSupport: () => void;
   onOpenAccount: () => void;
   onOpenFontSettings: () => void;
+  onOpenNotificationSettings: () => void;
   onOpenAuth: () => void;
   onOpenOnboarding: () => void;
 };
@@ -63,6 +65,7 @@ export function ProfileContentBody({
   updateStatus,
   isCheckingForUpdate,
   isUpdatingPhoto,
+  notificationsEnabled,
   onSignOut,
   onSyncNow,
   onCheckForUpdates,
@@ -71,6 +74,7 @@ export function ProfileContentBody({
   onContactSupport,
   onOpenAccount,
   onOpenFontSettings,
+  onOpenNotificationSettings,
   onOpenAuth,
   onOpenOnboarding,
 }: ProfileContentBodyProps) {
@@ -203,7 +207,7 @@ export function ProfileContentBody({
             <Picker
               label={
                 <Label
-                  title={t("profile.accentColor")}
+                  title={t("profile.theme")}
                   icon={<Image systemName="paintpalette" size={SETTINGS_ICON_SIZE} color={appTheme.colors.primary} />}
                 />
               }
@@ -262,6 +266,26 @@ export function ProfileContentBody({
               <Text modifiers={[tag("en")]}>{t("language.english")}</Text>
               <Text modifiers={[tag("id")]}>{t("language.indonesia")}</Text>
             </Picker>
+          </Section>
+
+          <Section title={t("profile.notifications")}>
+            <LabeledContent
+              label={
+                <Label
+                  title={t("profile.remindersAndAlerts")}
+                  icon={<Image systemName="bell.badge" size={SETTINGS_ICON_SIZE} color={appTheme.colors.primary} />}
+                />
+              }
+              modifiers={[...rowModifiers, onTapGesture(() => onOpenNotificationSettings())]}
+            >
+              <Text>
+                {notificationsEnabled === null
+                  ? t("profile.notificationStatusChecking")
+                  : notificationsEnabled
+                    ? t("profile.notificationStatusOn")
+                    : t("profile.notificationStatusOff")}
+              </Text>
+            </LabeledContent>
           </Section>
 
           {__DEV__ ? (

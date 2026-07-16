@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { ScrollView, View } from "react-native";
+import { useEffect, useMemo, useState } from "react";
+import { RefreshControl, ScrollView, View } from "react-native";
 import { AppText as RNText } from "@/components/AppText";
 import { Stack } from "expo-router";
 import { useTranslation } from "react-i18next";
@@ -8,9 +8,11 @@ import { useAppTheme } from "@/components/AppTheme";
 import { useDrawer } from "@/components/DrawerContext";
 import { CashflowTable } from "@/components/cashflow/CashflowTable";
 import { CashflowCalendar } from "@/components/cashflow/CashflowCalendar";
+import { useSyncStatus } from "@/components/SyncProvider";
 import { useCurrency } from "@/components/CurrencyProvider";
 import { useCashflowData } from "@/data/cashflow/CashflowDataProvider";
 import { AppSegmentedControl } from "@/components/AppSegmentedControl";
+import { getPreference, setPreference } from "@/lib/preferences";
 
 function CashflowSummaryHeader({ entries }: { entries: ReturnType<typeof useCashflowData>["entries"] }) {
   const appTheme = useAppTheme();
@@ -61,8 +63,22 @@ function CashflowSummaryHeader({ entries }: { entries: ReturnType<typeof useCash
 export default function CashflowScreen() {
   const { t } = useTranslation();
   const { open } = useDrawer();
+  const appTheme = useAppTheme();
+  const sync = useSyncStatus();
   const { entries } = useCashflowData();
   const [view, setView] = useState<"list" | "calendar">("list");
+
+  useEffect(() => {
+    getPreference("cashflowView").then((saved) => {
+      if (saved === "list" || saved === "calendar") setView(saved);
+    });
+  }, []);
+
+  const handleViewChange = (index: number) => {
+    const next = index === 0 ? "list" : "calendar";
+    setView(next);
+    setPreference("cashflowView", next);
+  };
 
   return (
     <>
@@ -75,7 +91,7 @@ export default function CashflowScreen() {
           <AppSegmentedControl
             values={[t('cashflow.list'), t('cashflow.kalender')]}
             selectedIndex={view === "list" ? 0 : 1}
-            onIndexChange={(index) => setView(index === 0 ? "list" : "calendar")}
+            onIndexChange={handleViewChange}
             style={{ width: 180 }}
           />
         </Stack.Toolbar.View>
@@ -89,6 +105,15 @@ export default function CashflowScreen() {
                 <CashflowSummaryHeader entries={entries} />
               </View>
             }
+            refreshControl={
+              <RefreshControl
+                refreshing={sync.status === "syncing"}
+                onRefresh={() => void sync.syncNow()}
+                tintColor={appTheme.colors.primary}
+                colors={[appTheme.colors.primary]}
+                progressBackgroundColor={appTheme.colors.background}
+              />
+            }
           />
         </View>
       ) : (
@@ -96,6 +121,15 @@ export default function CashflowScreen() {
           className="bg-[--app-color-background] flex-1"
           contentContainerClassName="px-5 pb-10 pt-5"
           contentInsetAdjustmentBehavior="automatic"
+          refreshControl={
+            <RefreshControl
+              refreshing={sync.status === "syncing"}
+              onRefresh={() => void sync.syncNow()}
+              tintColor={appTheme.colors.primary}
+              colors={[appTheme.colors.primary]}
+              progressBackgroundColor={appTheme.colors.background}
+            />
+          }
         >
           <CashflowCalendar entries={entries} />
         </ScrollView>

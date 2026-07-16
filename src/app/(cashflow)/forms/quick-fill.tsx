@@ -31,6 +31,7 @@ export default function QuickFillFormSheet() {
   const [label, setLabel] = useState("");
   const [amountText, setAmountText] = useState("");
   const [showForm, setShowForm] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   const borderColor = alpha(appTheme.colors.foreground, appTheme.isDark ? 0.09 : 0.07);
   const surface = alpha(appTheme.colors.foreground, appTheme.isDark ? 0.035 : 0.025);
@@ -60,20 +61,30 @@ export default function QuickFillFormSheet() {
 
   const handleCreate = async () => {
     const trimmed = label.trim();
-    if (!trimmed) return;
+    if (!trimmed || isSaving) return;
 
     const displayAmount = parseAmountInput(amountText);
     const amount = displayAmount === null ? null : Math.round(currency.toIdr(displayAmount));
 
-    await createQuickFill({ label: trimmed, amount, categoryId });
-    setLabel("");
-    setAmountText("");
+    setIsSaving(true);
+    try {
+      await createQuickFill({ label: trimmed, amount, categoryId });
+      setLabel("");
+      setAmountText("");
+    } catch (error) {
+      Alert.alert(
+        t("quickFill.title"),
+        error instanceof Error ? error.message : t("transfer.transferFailedMessage"),
+      );
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const confirmDelete = (id: string, quickFillLabel: string) => {
     Alert.alert(t("quickFill.removeAlert.title"), t("quickFill.removeAlert.message", { label: quickFillLabel }), [
       { text: t("common.cancel"), style: "cancel" },
-      { text: t("quickFill.removeAlert.remove"), style: "destructive", onPress: () => deleteQuickFill(id) },
+      { text: t("quickFill.removeAlert.remove"), style: "destructive", onPress: () => deleteQuickFill(id).catch(console.error) },
     ]);
   };
 

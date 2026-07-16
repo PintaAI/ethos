@@ -32,6 +32,11 @@ export async function requestNotificationPermissionsAsync() {
   return allowsNotifications(permissions);
 }
 
+export async function notificationsAreAllowedAsync() {
+  if (Platform.OS !== "ios" && Platform.OS !== "android") return false;
+  return allowsNotifications(await Notifications.getPermissionsAsync());
+}
+
 export function configureForegroundNotifications() {
   if (Platform.OS !== "ios" && Platform.OS !== "android") return;
 

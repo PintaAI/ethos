@@ -90,6 +90,17 @@ async function hardDeleteManagementTree(db: SQLiteDatabase, managementId: string
 }
 
 // ---------------------------------------------------------------------------
+// Serialized execution — coalesce concurrent callers
+// ---------------------------------------------------------------------------
+
+let activeSync: Promise<SyncSummary> | null = null;
+
+export async function waitForSyncIdleAsync(): Promise<void> {
+  if (!activeSync) return;
+  await activeSync.catch(() => undefined);
+}
+
+// ---------------------------------------------------------------------------
 // Push phase
 // ---------------------------------------------------------------------------
 
@@ -675,29 +686,39 @@ async function pullEntries(db: SQLiteDatabase, mgmt: ManagementLite, summary: Sy
 // ---------------------------------------------------------------------------
 
 export async function syncNow(db: SQLiteDatabase): Promise<SyncSummary> {
-  const summary: SyncSummary = { pushed: 0, pulled: 0, conflicts: 0, errors: 0 };
+  if (activeSync) return activeSync;
 
-  await pushManagements(db, summary);
-  await pushCategories(db, summary);
-  await pushQuickFills(db, summary);
-  await pushOverallBudgets(db, summary);
-  await pushRecurringEntries(db, summary);
-  await pushEntries(db, summary);
+  activeSync = (async () => {
+    const summary: SyncSummary = { pushed: 0, pulled: 0, conflicts: 0, errors: 0 };
 
-  await pullManagements(db, summary);
+    await pushManagements(db, summary);
+    await pushCategories(db, summary);
+    await pushQuickFills(db, summary);
+    await pushOverallBudgets(db, summary);
+    await pushRecurringEntries(db, summary);
+    await pushEntries(db, summary);
 
-  const localManagements = await listLocalManagementsWithRemoteId(db);
-  for (const mgmt of localManagements) {
-    await pullCategories(db, mgmt, summary);
-    await pullQuickFills(db, mgmt, summary);
-    await pullOverallBudgets(db, mgmt, summary);
-    await pullRecurringEntries(db, mgmt, summary);
+    await pullManagements(db, summary);
+
+    const localManagements = await listLocalManagementsWithRemoteId(db);
+    for (const mgmt of localManagements) {
+      await pullCategories(db, mgmt, summary);
+      await pullQuickFills(db, mgmt, summary);
+      await pullOverallBudgets(db, mgmt, summary);
+      await pullRecurringEntries(db, mgmt, summary);
+    }
+
+    for (const mgmt of localManagements) {
+      await pullEntries(db, mgmt, summary);
+    }
+
+    await setLastPulledAt(db, nowIso());
+    return summary;
+  })();
+
+  try {
+    return await activeSync;
+  } finally {
+    activeSync = null;
   }
-
-  for (const mgmt of localManagements) {
-    await pullEntries(db, mgmt, summary);
-  }
-
-  await setLastPulledAt(db, nowIso());
-  return summary;
 }

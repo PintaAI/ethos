@@ -11,7 +11,6 @@ export function createRecurringEntry(body: {
   nominal: number;
   io: "Income" | "Expenses";
   frequency: RecurringFrequency;
-  reminderTime: string;
   startDate: string;
   categoryId?: string;
   dayOfWeek?: number;
@@ -28,7 +27,6 @@ export function updateRecurringEntry(id: string, body: Partial<{
   nominal: number;
   io: "Income" | "Expenses";
     frequency: RecurringFrequency;
-    reminderTime: string;
     startDate: string;
   categoryId: string | null;
   dayOfWeek: number | null;

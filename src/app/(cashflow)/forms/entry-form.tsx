@@ -139,6 +139,7 @@ export default function EntryForm() {
   const [amountText, setAmountText] = useState("");
   const [initialAmountText, setInitialAmountText] = useState("");
   const [noteText, setNoteText] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
   const { width: screenWidth } = useWindowDimensions();
   const {
     categoryIndex,
@@ -203,23 +204,31 @@ export default function EntryForm() {
 
   useEffect(() => {
     if (isEditing || !date) return;
+    let cancelled = false;
 
     const today = toDateKey(getDateDaysAgo(0));
     const yesterday = toDateKey(getDateDaysAgo(1));
 
-    if (date === today) {
-      setDateIndex(1);
-      setCustomDate(null);
-    } else if (date === yesterday) {
-      setDateIndex(0);
-      setCustomDate(null);
-    } else {
-      const parsed = parseDateKey(date);
-      if (parsed && !isNaN(parsed.getTime())) {
-        setDateIndex(2);
-        setCustomDate(parsed);
+    queueMicrotask(() => {
+      if (cancelled) return;
+      if (date === today) {
+        setDateIndex(1);
+        setCustomDate(null);
+      } else if (date === yesterday) {
+        setDateIndex(0);
+        setCustomDate(null);
+      } else {
+        const parsed = parseDateKey(date);
+        if (parsed && !isNaN(parsed.getTime())) {
+          setDateIndex(2);
+          setCustomDate(parsed);
+        }
       }
-    }
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, [date, isEditing]);
 
   const addQuickAmount = (value: number) => {
@@ -267,6 +276,8 @@ export default function EntryForm() {
   };
 
   const handleSave = async () => {
+    if (isSaving) return;
+
     const displayNominal = parseInt(amountText, 10) || 0;
     if (displayNominal <= 0) {
       Alert.alert(t("entry.amountRequiredTitle"), t("entry.amountRequiredMessage"));
@@ -276,7 +287,8 @@ export default function EntryForm() {
     const nominal = Math.round(currency.toIdr(displayNominal));
     const exchangeRateToIdr = currency.isIdr ? 1 : 1 / currency.rate;
 
-    const entryCategory = selectedCategory ?? categoryOptions[categoryIndex] ?? categoryOptions[0];
+    const entryType = ioIndex === 0 ? t("entry.income") : t("entry.expense");
+    const entryCategory = selectedCategory ?? categoryOptions[categoryIndex] ?? null;
     const selectedDateOption = DATE_OPTIONS[dateIndex];
     const entryDate = selectedDateOption?.daysAgo !== undefined
       ? toDateKey(getDateDaysAgo(selectedDateOption.daysAgo))
@@ -284,35 +296,42 @@ export default function EntryForm() {
 
     const io: "Income" | "Expenses" = ioIndex === 0 ? "Income" : "Expenses";
     const payload = {
-      name: noteText.trim() || entryCategory.name,
+      name: noteText.trim() || entryCategory?.name || entryType,
       nominal,
-      categoryId: entryCategory.id,
+      categoryId: entryCategory?.id ?? null,
       date: entryDate,
       io,
     };
 
-    if (isEditing && id) {
-      if (amountText !== initialAmountText) {
-        Object.assign(payload, {
+    setIsSaving(true);
+    try {
+      if (isEditing && id) {
+        if (amountText !== initialAmountText) {
+          Object.assign(payload, {
+            originalNominal: displayNominal,
+            originalCurrency: currency.currency,
+            exchangeRateToIdr,
+            exchangeRateAt: new Date().toISOString(),
+          });
+        }
+        await updateEntry(id, payload);
+      } else {
+        await createEntry({
+          ...payload,
           originalNominal: displayNominal,
           originalCurrency: currency.currency,
           exchangeRateToIdr,
           exchangeRateAt: new Date().toISOString(),
         });
       }
-      await updateEntry(id, payload);
-    } else {
-      await createEntry({
-        ...payload,
-        originalNominal: displayNominal,
-        originalCurrency: currency.currency,
-        exchangeRateToIdr,
-        exchangeRateAt: new Date().toISOString(),
-      });
-    }
 
-    clearForm();
-    router.back();
+      clearForm();
+      router.back();
+    } catch (error) {
+      Alert.alert(t("entry.amountRequiredTitle"), error instanceof Error ? error.message : t("entry.amountRequiredMessage"));
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (

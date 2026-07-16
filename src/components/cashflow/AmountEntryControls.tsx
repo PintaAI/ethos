@@ -49,8 +49,8 @@ export function CashflowAmountInput({
 }
 
 export function QuickAmountStrip({ denominations, onAmount, hidden }: { denominations: number[]; onAmount: (value: number) => void; hidden?: boolean }) {
-  if (hidden) return null;
   const appTheme = useAppTheme();
+  if (hidden) return null;
   const neutralBg = appTheme.isDark ? "rgba(255,255,255,0.055)" : "rgba(255,255,255,0.78)";
   const neutralBorder = appTheme.isDark ? "rgba(255,255,255,0.1)" : "rgba(15,23,42,0.08)";
 

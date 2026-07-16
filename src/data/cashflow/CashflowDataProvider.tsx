@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useSQLiteContext } from "expo-sqlite";
 import type { BudgetPeriod, CashflowDataState, CashflowCategory, CashflowManagement, CashflowOverallBudget, CashflowQuickFill, CashflowRecurringEntry, CreateCategoryInput, CreateEntryInput, CreateQuickFillInput, CreateRecurringEntryInput, ManagementImageTheme, UpdateCategoryInput, UpdateManagementInput } from "./types";
 import {
@@ -38,10 +38,11 @@ import {
   updateManagement as updateManagementInRepo,
 } from "./repository";
 import type { CashflowEntry } from "@/components/cashflow/CashflowTable";
+import { reconcileLocalRemindersAsync } from "@/lib/localReminders";
 import {
+  cancelLegacyAutomaticEntryRemindersAsync,
   notifyMaterializedAutomaticEntriesAsync,
   registerAutomaticEntryBackgroundTaskAsync,
-  syncAutomaticEntryRemindersAsync,
 } from "@/tasks/automaticEntries";
 
 const emptyActivity = buildActivity([]);
@@ -59,8 +60,19 @@ export function CashflowDataProvider({ children }: { children: ReactNode }) {
   const [quickFills, setQuickFills] = useState<CashflowQuickFill[]>([]);
   const [recurringEntries, setRecurringEntries] = useState<CashflowRecurringEntry[]>([]);
   const [entries, setEntries] = useState<CashflowEntry[]>([]);
+  const walletGenerationRef = useRef(0);
+  const walletOperationRef = useRef<Promise<void>>(Promise.resolve());
+  const isMountedRef = useRef(true);
 
-  const loadActiveWalletData = useCallback(async (managementId: string) => {
+  const enqueueWalletOperation = useCallback((operation: () => Promise<void>) => {
+    const queued = walletOperationRef.current
+      .catch(() => undefined)
+      .then(operation);
+    walletOperationRef.current = queued;
+    return queued;
+  }, []);
+
+  const loadActiveWalletData = useCallback(async (managementId: string, generation: number) => {
     const [nextCategories, nextOverallBudgets, nextQuickFills, nextRecurringEntries, nextEntries] = await Promise.all([
       listCategories(db, managementId),
       listOverallBudgets(db, managementId),
@@ -68,6 +80,8 @@ export function CashflowDataProvider({ children }: { children: ReactNode }) {
       listRecurringEntries(db, managementId),
       listEntries(db, managementId),
     ]);
+
+    if (!isMountedRef.current || generation !== walletGenerationRef.current) return;
 
     setCategories(nextCategories);
     setOverallBudgets(nextOverallBudgets);
@@ -78,17 +92,25 @@ export function CashflowDataProvider({ children }: { children: ReactNode }) {
 
   const refreshEntries = useCallback(async () => {
     if (!activeManagementId) return;
+    const currentGeneration = walletGenerationRef.current;
     const [nextManagements, nextEntries] = await Promise.all([
       listManagements(db),
       listEntries(db, activeManagementId),
     ]);
+    if (currentGeneration !== walletGenerationRef.current) return;
     setManagements(nextManagements);
     setEntries(nextEntries);
   }, [db, activeManagementId]);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(() => enqueueWalletOperation(async () => {
+    const generation = ++walletGenerationRef.current;
     const [nextManagements, storedManagementId] = await Promise.all([listManagements(db), getActiveManagementId(db)]);
-    const fallbackManagementId = storedManagementId ?? nextManagements[0]?.id ?? null;
+    if (!isMountedRef.current || generation !== walletGenerationRef.current) return;
+
+    const storedStillExists = storedManagementId
+      ? nextManagements.some((management) => management.id === storedManagementId)
+      : false;
+    const fallbackManagementId = storedStillExists ? storedManagementId : (nextManagements[0]?.id ?? null);
 
     setManagements(nextManagements);
     setActiveManagementIdState(fallbackManagementId);
@@ -105,25 +127,39 @@ export function CashflowDataProvider({ children }: { children: ReactNode }) {
 
     const materialized = await materializeDueRecurringEntries(db, fallbackManagementId);
     await notifyMaterializedAutomaticEntriesAsync(materialized);
-    await loadActiveWalletData(fallbackManagementId);
-    setIsReady(true);
-  }, [db, loadActiveWalletData]);
+    await loadActiveWalletData(fallbackManagementId, generation);
+    if (isMountedRef.current && generation === walletGenerationRef.current) setIsReady(true);
+  }), [db, enqueueWalletOperation, loadActiveWalletData]);
+
+  const selectActiveManagement = useCallback((managementId: string) => enqueueWalletOperation(async () => {
+    const management = await db.getFirstAsync<{ id: string }>(
+      "SELECT id FROM managements WHERE id = ? AND deleted_at IS NULL",
+      managementId,
+    );
+    if (!management) throw new Error("Wallet not found");
+
+    const generation = ++walletGenerationRef.current;
+    await persistActiveManagementId(db, managementId);
+    if (!isMountedRef.current || generation !== walletGenerationRef.current) return;
+    setActiveManagementIdState(managementId);
+    await loadActiveWalletData(managementId, generation);
+  }), [db, enqueueWalletOperation, loadActiveWalletData]);
 
   useEffect(() => {
-    let isMounted = true;
+    isMountedRef.current = true;
 
     async function load() {
       await refresh();
-      if (!isMounted) return;
     }
 
     load().catch((error) => {
       console.error("Failed to load cashflow data", error);
-      if (isMounted) setIsReady(true);
+      if (isMountedRef.current) setIsReady(true);
     });
 
     return () => {
-      isMounted = false;
+      isMountedRef.current = false;
+      walletGenerationRef.current += 1;
     };
   }, [db, refresh]);
 
@@ -131,9 +167,14 @@ export function CashflowDataProvider({ children }: { children: ReactNode }) {
     if (!isReady) return;
 
     registerAutomaticEntryBackgroundTaskAsync()
-      .then(() => syncAutomaticEntryRemindersAsync(db))
+      .then(cancelLegacyAutomaticEntryRemindersAsync)
       .catch((error) => console.error("Failed to prepare automatic entries", error));
-  }, [db, isReady, recurringEntries]);
+  }, [isReady]);
+
+  useEffect(() => {
+    if (!isReady) return;
+    reconcileLocalRemindersAsync(db).catch((error) => console.error("Failed to reconcile local reminders", error));
+  }, [categories, db, entries, isReady, overallBudgets]);
 
   const activeManagement = useMemo(
     () => managements.find((management) => management.id === activeManagementId) ?? null,
@@ -156,12 +197,7 @@ export function CashflowDataProvider({ children }: { children: ReactNode }) {
     stats: entries.length > 0 ? stats : emptyCashflowStats,
     activity: entries.length > 0 ? activity : emptyActivity,
     analytics: entries.length > 0 ? analytics : emptyAnalytics,
-    setActiveManagementId: (managementId: string) => {
-      setActiveManagementIdState(managementId);
-      void persistActiveManagementId(db, managementId).catch((error) => console.error("Failed to persist active management id", error));
-      void loadActiveWalletData(managementId).catch((error) => console.error("Failed to load wallet data", error));
-      return Promise.resolve();
-    },
+    setActiveManagementId: selectActiveManagement,
     setManagementImage: async (managementId: string, image: string, imageTheme: ManagementImageTheme | null) => {
       await persistManagementImage(db, managementId, image, imageTheme);
       await refresh();
@@ -260,7 +296,7 @@ export function CashflowDataProvider({ children }: { children: ReactNode }) {
       await refresh();
     },
     refresh,
-  }), [isReady, activeManagementId, activeManagement, managements, categories, overallBudgets, quickFills, recurringEntries, entries, stats, activity, analytics, db, loadActiveWalletData, refresh, refreshEntries]);
+  }), [isReady, activeManagementId, activeManagement, managements, categories, overallBudgets, quickFills, recurringEntries, entries, stats, activity, analytics, db, refresh, refreshEntries, selectActiveManagement]);
 
   return <CashflowDataContext.Provider value={value}>{children}</CashflowDataContext.Provider>;
 }

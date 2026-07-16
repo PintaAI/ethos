@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AppState } from "react-native";
-import * as Network from "expo-network";
 import { useSQLiteContext } from "expo-sqlite";
 import { useAuth } from "@/components/AuthProvider";
 import { useCashflowData } from "@/data/cashflow/CashflowDataProvider";
 import { syncNow } from "./syncEngine";
+import { reconcileSyncBackgroundTaskAsync } from "@/tasks/syncBackground";
 
 export type SyncStatus = "idle" | "syncing" | "error";
 
@@ -14,17 +13,19 @@ export type SyncHook = {
   syncNow: () => Promise<void>;
 };
 
-const AUTO_SYNC_INTERVAL_MS = 60_000;
+export function isSyncEligible(memberCount: number | undefined | null): boolean {
+  return memberCount != null && memberCount > 1;
+}
 
 export function useSync(): SyncHook {
   const db = useSQLiteContext();
   const { isAuthenticated, isPending } = useAuth();
-  const { refresh } = useCashflowData();
+  const { activeManagement, refresh } = useCashflowData();
   const [status, setStatus] = useState<SyncStatus>("idle");
   const [lastSync, setLastSync] = useState<Date | null>(null);
   const runningRef = useRef(false);
-  const lastSuccessfulSyncRef = useRef(0);
-  const wasConnectedRef = useRef<boolean | null>(null);
+
+  const eligible = isSyncEligible(activeManagement?.memberCount);
 
   const runSync = useCallback(async () => {
     if (runningRef.current) return;
@@ -38,7 +39,6 @@ export function useSync(): SyncHook {
         console.warn(`[sync] completed with ${summary.errors} error(s)`);
         setStatus("error");
       } else {
-        lastSuccessfulSyncRef.current = completedAt.getTime();
         setLastSync(completedAt);
         setStatus("idle");
       }
@@ -50,33 +50,17 @@ export function useSync(): SyncHook {
     }
   }, [db, refresh]);
 
-  const runAutomaticSync = useCallback(() => {
-    if (Date.now() - lastSuccessfulSyncRef.current < AUTO_SYNC_INTERVAL_MS) return;
-    void runSync();
-  }, [runSync]);
+  useEffect(() => {
+    if (isPending || !isAuthenticated) return;
+    const initialSync = setTimeout(() => void runSync(), 0);
+    return () => clearTimeout(initialSync);
+  }, [isAuthenticated, isPending, runSync]);
 
   useEffect(() => {
-    if (!isAuthenticated || isPending) {
-      lastSuccessfulSyncRef.current = 0;
-      wasConnectedRef.current = null;
-      return;
-    }
-    const sub = AppState.addEventListener("change", (state) => {
-      if (state === "active") runAutomaticSync();
-    });
-    const networkSub = Network.addNetworkStateListener(({ isConnected, isInternetReachable }) => {
-      const isOnline = isConnected === true && isInternetReachable !== false;
-      const connectionRestored = wasConnectedRef.current === false && isOnline;
-      wasConnectedRef.current = isOnline;
-      if (connectionRestored) runAutomaticSync();
-    });
-    const initialSync = setTimeout(runAutomaticSync, 0);
-    return () => {
-      clearTimeout(initialSync);
-      sub.remove();
-      networkSub.remove();
-    };
-  }, [isAuthenticated, isPending, runAutomaticSync]);
+    reconcileSyncBackgroundTaskAsync(isAuthenticated && !isPending && eligible).catch((error) =>
+      console.error("[sync] failed to reconcile background sync", error),
+    );
+  }, [isAuthenticated, isPending, eligible]);
 
   return { status, lastSync, syncNow: runSync };
 }

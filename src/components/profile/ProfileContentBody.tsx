@@ -25,6 +25,7 @@ export type ProfileContentBodyProps = {
   updateStatus: string;
   isCheckingForUpdate: boolean;
   isUpdatingPhoto: boolean;
+  notificationsEnabled: boolean | null;
   onSignOut: () => void;
   onSyncNow: () => void;
   onCheckForUpdates: () => void;
@@ -33,6 +34,7 @@ export type ProfileContentBodyProps = {
   onContactSupport: () => void;
   onOpenAccount: () => void;
   onOpenFontSettings: () => void;
+  onOpenNotificationSettings: () => void;
   onOpenAuth: () => void;
   onOpenOnboarding: () => void;
 };
@@ -141,7 +143,7 @@ export function ProfileContentBody(props: ProfileContentBodyProps) {
             trackColor={{ true: appTheme.colors.primary }}
           />
         </View>
-        <Row label={t("profile.accentColor")} detail={appTheme.availableThemes.find((option) => option.slug === appTheme.theme)?.name} icon="paintpalette" onPress={() => setExpandedSetting(expandedSetting === "theme" ? null : "theme")} />
+        <Row label={t("profile.theme")} detail={appTheme.availableThemes.find((option) => option.slug === appTheme.theme)?.name} icon="paintpalette" onPress={() => setExpandedSetting(expandedSetting === "theme" ? null : "theme")} />
         {expandedSetting === "theme" ? <Options options={appTheme.availableThemes.map((option) => ({ label: option.name, value: option.slug }))} selected={appTheme.theme} onSelect={appTheme.setTheme} /> : null}
         <Row label="Font" icon="textformat.size" onPress={props.onOpenFontSettings} />
       </Section>
@@ -151,6 +153,19 @@ export function ProfileContentBody(props: ProfileContentBodyProps) {
         {expandedSetting === "currency" ? <Options options={SUPPORTED_CURRENCIES.map((option) => ({ label: `${option.flag} ${option.code} - ${option.name}`, value: option.code }))} selected={currency} onSelect={setCurrency} /> : null}
         <Row label={t("language.label")} detail={i18n.resolvedLanguage === "id" ? t("language.indonesia") : t("language.english")} icon="globe" onPress={() => setExpandedSetting(expandedSetting === "language" ? null : "language")} />
         {expandedSetting === "language" ? <Options options={[{ label: t("language.english"), value: "en" }, { label: t("language.indonesia"), value: "id" }]} selected={i18n.resolvedLanguage || "en"} onSelect={(value) => void i18n.changeLanguage(value)} /> : null}
+      </Section>
+
+      <Section title={t("profile.notifications")}>
+        <Row
+          label={t("profile.remindersAndAlerts")}
+          detail={props.notificationsEnabled === null
+            ? t("profile.notificationStatusChecking")
+            : props.notificationsEnabled
+              ? t("profile.notificationStatusOn")
+              : t("profile.notificationStatusOff")}
+          icon="bell.badge"
+          onPress={props.onOpenNotificationSettings}
+        />
       </Section>
 
       <Section title={t("profile.updates")}>

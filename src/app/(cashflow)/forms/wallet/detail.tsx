@@ -116,6 +116,11 @@ export default function WalletDetailScreen() {
         await updateManagement(id, { name, image: savedImage });
       }
       router.back();
+    } catch (error) {
+      Alert.alert(
+        t("wallet.saveFailedTitle"),
+        error instanceof Error ? error.message : t("wallet.saveFailedMessage"),
+      );
     } finally {
       setIsSaving(false);
       setIsUploadingImage(false);

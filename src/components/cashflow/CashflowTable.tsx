@@ -1,14 +1,16 @@
-import { useDeferredValue, useState, type ReactElement } from "react";
-import { Alert, FlatList, Modal, Platform, Pressable, ScrollView, TextInput, View, type RefreshControlProps } from "react-native";
+import { useDeferredValue, useRef, useState, type ReactElement } from "react";
+import { Alert, Animated, FlatList, Modal, Pressable, ScrollView, TextInput, View, type RefreshControlProps } from "react-native";
+import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
 import { type SFSymbol } from "expo-symbols";
+import ReanimatedSwipeable, { type SwipeableMethods } from "react-native-gesture-handler/ReanimatedSwipeable";
 import { AppSymbol } from "@/components/AppSymbol";
 import { useTranslation } from "react-i18next";
 import i18n from "@/i18n";
 import { AppText as RNText } from "@/components/AppText";
 import { useAppTheme } from "@/components/AppTheme";
 import { useCurrency } from "@/components/CurrencyProvider";
-import { alpha } from "@/lib/color";
+import { alpha, mix } from "@/lib/color";
 import { formatEntryAmount } from "@/lib/currency";
 import { addDaysToDateKey, formatDateKey, parseDateKey } from "@/lib/date";
 import { useCashflowData } from "@/data/cashflow/CashflowDataProvider";
@@ -182,6 +184,139 @@ function entryKeyExtractor(item: CashflowEntry) {
   return item.id;
 }
 
+function CashflowTableRow({ item, isSelecting, selected, toggleRow, onMove, onDelete, onSwipeOpen, onSwipeClose, hideTanggal }: {
+  item: CashflowEntry;
+  isSelecting: boolean;
+  selected: boolean;
+  toggleRow: (id: string) => void;
+  onMove: (id: string) => void;
+  onDelete: (id: string) => void;
+  onSwipeOpen: (swipeable: SwipeableMethods) => void;
+  onSwipeClose: (swipeable: SwipeableMethods) => void;
+  hideTanggal: boolean;
+}) {
+  const { t } = useTranslation();
+  const appTheme = useAppTheme();
+  const { currency, format } = useCurrency();
+  const isIncome = item.io === "Income";
+  const amountColor = isIncome ? appTheme.colors.positive : appTheme.colors.negative;
+  const typeLabel = isIncome ? t('cashflow.incomeLabel') : t('cashflow.expenseLabel');
+  const rowBackground = selected
+    ? mix(appTheme.colors.background, appTheme.colors.primary, appTheme.isDark ? 0.24 : 0.12)
+    : mix(appTheme.colors.background, appTheme.colors.foreground, appTheme.isDark ? 0.045 : 0.035);
+  const [pressScale] = useState(() => new Animated.Value(1));
+  const swipeableRef = useRef<SwipeableMethods>(null);
+
+  function handlePressIn() {
+    Animated.timing(pressScale, {
+      toValue: 0.96,
+      duration: 60,
+      useNativeDriver: true,
+    }).start();
+  }
+
+  function handlePressOut() {
+    Animated.timing(pressScale, {
+      toValue: 1,
+      duration: 80,
+      useNativeDriver: true,
+    }).start();
+  }
+
+  function renderRightActions() {
+    return (
+      <View className="h-full flex-row overflow-hidden rounded-[28px]">
+        <Pressable
+          onPress={() => {
+            swipeableRef.current?.close();
+            onMove(item.id);
+          }}
+          accessibilityRole="button"
+          accessibilityLabel={t("cashflow.move")}
+          className="w-20 items-center justify-center gap-1"
+          style={{ backgroundColor: appTheme.colors.primary }}
+        >
+          <TableSymbol name="arrow.right" color={appTheme.colors.inverseForeground} size={16} />
+          <RNText className="text-xs font-bold" style={{ color: appTheme.colors.inverseForeground }}>{t("cashflow.move")}</RNText>
+        </Pressable>
+        <Pressable
+          onPress={() => {
+            swipeableRef.current?.close();
+            onDelete(item.id);
+          }}
+          accessibilityRole="button"
+          accessibilityLabel={t("cashflow.delete")}
+          className="w-20 items-center justify-center gap-1"
+          style={{ backgroundColor: appTheme.colors.negative }}
+        >
+          <TableSymbol name="trash.fill" color="#ffffff" size={16} />
+          <RNText className="text-xs font-bold text-white">{t("cashflow.delete")}</RNText>
+        </Pressable>
+      </View>
+    );
+  }
+
+  return (
+    <ReanimatedSwipeable
+      ref={swipeableRef}
+      enabled={!isSelecting}
+      friction={2}
+      rightThreshold={80}
+      overshootRight={false}
+      containerStyle={{ overflow: "visible" }}
+      onSwipeableWillOpen={() => {
+        if (swipeableRef.current) onSwipeOpen(swipeableRef.current);
+      }}
+      onSwipeableClose={() => {
+        if (swipeableRef.current) onSwipeClose(swipeableRef.current);
+      }}
+      renderRightActions={renderRightActions}
+    >
+      <Animated.View style={{ transform: [{ scale: pressScale }] }}>
+        <Pressable
+          onLongPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
+            toggleRow(item.id);
+          }}
+          onPress={() => {
+            if (isSelecting) {
+              toggleRow(item.id);
+              return;
+            }
+            router.push(`/forms/entry-form?id=${item.id}`);
+          }}
+          onPressIn={handlePressIn}
+          onPressOut={handlePressOut}
+          className="flex-row items-center gap-3 rounded-[28px] px-3 py-3"
+          style={{
+            backgroundColor: rowBackground,
+            borderColor: selected ? alpha(appTheme.colors.primary, 0.5) : "transparent",
+            borderWidth: 1,
+          }}
+        >
+          <TransactionGlyph category={item.category} categoryColor={item.categoryColor} categoryIcon={item.categoryIcon} selected={selected} />
+          <View className="min-w-0 flex-1 gap-1.5">
+            <RNText numberOfLines={1} className="text-base font-semibold" style={{ color: appTheme.colors.foreground }}>{item.name}</RNText>
+            <View className="flex-row items-center gap-2 overflow-hidden">
+              {!hideTanggal ? <RNText className="text-xs" style={{ color: appTheme.colors.muted }}>{formatDateKey(item.date)}</RNText> : null}
+              <CategoryBadge category={item.category} categoryColor={item.categoryColor} categoryIcon={item.categoryIcon} />
+            </View>
+          </View>
+          <View className="items-end gap-1.5">
+            <RNText numberOfLines={1} className="text-right text-base font-bold" style={{ color: amountColor }}>
+              {isIncome ? "+" : "-"}{formatEntryAmount(item, currency, format, { compact: true })}
+            </RNText>
+            <View className="flex-row items-center gap-1">
+              <View className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: amountColor }} />
+              <RNText className="text-xs font-medium" style={{ color: appTheme.colors.muted }}>{typeLabel}</RNText>
+            </View>
+          </View>
+        </Pressable>
+      </Animated.View>
+    </ReanimatedSwipeable>
+  );
+}
+
 export function CashflowTable({ entries, dateFilter, onDateFilterChange, hideTanggal = false, ListHeaderComponent: injectedHeader, ListFooterComponent: injectedFooter, ListEmptyComponent: injectedEmpty, refreshControl }: CashflowTableProps) {
   const { t } = useTranslation();
   const appTheme = useAppTheme();
@@ -200,6 +335,7 @@ export function CashflowTable({ entries, dateFilter, onDateFilterChange, hideTan
   const [isMoving, setIsMoving] = useState(false);
   const [showMovePicker, setShowMovePicker] = useState(false);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const openSwipeableRef = useRef<SwipeableMethods | null>(null);
   const positive = appTheme.colors.positive;
   const negative = appTheme.colors.negative;
   const borderColor = appTheme.isDark ? "rgba(255,255,255,0.12)" : "rgba(15,23,42,0.1)";
@@ -275,6 +411,30 @@ export function CashflowTable({ entries, dateFilter, onDateFilterChange, hideTan
     }
   }
 
+  async function handleRowDelete(id: string) {
+    if (isDeleting) return;
+
+    setIsDeleting(true);
+    try {
+      await deleteEntries([id]);
+      await sync.syncNow();
+    } catch (error) {
+      console.warn("Failed to delete cashflow entry", error);
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
+  function handleRowMove(id: string) {
+    if (destinationWallets.length === 0) {
+      Alert.alert(t("cashflow.noDestinationTitle"), t("cashflow.noDestinationMessage"));
+      return;
+    }
+
+    setRowSelection({ [id]: true });
+    setShowMovePicker(true);
+  }
+
   async function handleBulkMove(targetManagementId: string) {
     if (isMoving) return;
     const selectedIds = Object.keys(rowSelection).filter((id) => rowSelection[id]);
@@ -298,15 +458,27 @@ export function CashflowTable({ entries, dateFilter, onDateFilterChange, hideTan
     setRowSelection({});
   }
 
+  function handleSwipeOpen(swipeable: SwipeableMethods) {
+    if (openSwipeableRef.current && openSwipeableRef.current !== swipeable) {
+      openSwipeableRef.current.close();
+    }
+
+    openSwipeableRef.current = swipeable;
+  }
+
+  function handleSwipeClose(swipeable: SwipeableMethods) {
+    if (openSwipeableRef.current === swipeable) openSwipeableRef.current = null;
+  }
+
   const headerContent = (
     <View className="gap-4 p-0">
       {injectedHeader}
 
       <View className="relative">
         {isSelecting ? (
-          <View className="absolute inset-0 z-10 flex-row items-center gap-3 rounded-full pl-3 pr-1 py-2" style={{ backgroundColor: appTheme.colors.primary }}>
+          <View className="absolute inset-0 z-10 flex-row items-center gap-3 rounded-full pl-3 pr-1 py-2" style={{ backgroundColor: appTheme.colors.background }}>
             <Checkbox checked={allVisibleSelected} onPress={toggleVisibleRows} label={t('cashflow.selectAll')} />
-            <RNText className="flex-1 text-sm font-semibold" style={{ color: appTheme.colors.inverseForeground }}>
+            <RNText className="flex-1 text-sm font-semibold" style={{ color: appTheme.colors.foreground }}>
               {t('cashflow.selected', { count: selectedCount })}
             </RNText>
             <Pressable
@@ -321,17 +493,17 @@ export function CashflowTable({ entries, dateFilter, onDateFilterChange, hideTan
               accessibilityRole="button"
               accessibilityLabel={t("cashflow.move")}
               className="h-9 flex-row items-center gap-1.5 rounded-full px-3"
-              style={{ backgroundColor: alpha(appTheme.colors.inverseForeground, 0.16) }}
+              style={{ backgroundColor: mutedSurface }}
             >
-              <TableSymbol name="arrow.right" color={appTheme.colors.inverseForeground} size={12} />
-              <RNText className="text-xs font-bold" style={{ color: appTheme.colors.inverseForeground }}>{t("cashflow.move")}</RNText>
+              <TableSymbol name="arrow.right" color={appTheme.colors.foreground} size={12} />
+              <RNText className="text-xs font-bold" style={{ color: appTheme.colors.foreground }}>{t("cashflow.move")}</RNText>
             </Pressable>
             <Pressable onPress={handleBulkDelete} disabled={isDeleting} className="h-9 flex-row items-center gap-1.5 rounded-full px-3" style={{ backgroundColor: alpha(negative, isDeleting ? 0.55 : 0.95) }}>
               <TableSymbol name="trash.fill" color="#ffffff" size={12} />
               <RNText className="text-xs font-bold text-white">{t('cashflow.delete')}</RNText>
             </Pressable>
-            <Pressable onPress={clearSelection} className="h-9 w-9 items-center justify-center rounded-full" style={{ backgroundColor: alpha(appTheme.colors.inverseForeground, 0.14) }}>
-              <TableSymbol name="xmark" color={appTheme.colors.inverseForeground} size={12} />
+            <Pressable onPress={clearSelection} className="h-9 w-9 items-center justify-center rounded-full" style={{ backgroundColor: mutedSurface }}>
+              <TableSymbol name="xmark" color={appTheme.colors.foreground} size={12} />
             </Pressable>
           </View>
         ) : null}
@@ -433,49 +605,19 @@ export function CashflowTable({ entries, dateFilter, onDateFilterChange, hideTan
     </View>
   );
 
-  const renderEntry = ({ item }: { item: CashflowEntry }) => {
-    const isIncome = item.io === "Income";
-    const selected = !!rowSelection[item.id];
-    const amountColor = isIncome ? positive : negative;
-    const typeLabel = isIncome ? t('cashflow.incomeLabel') : t('cashflow.expenseLabel');
-
-    return (
-      <Pressable
-        onLongPress={() => toggleRow(item.id)}
-        onPress={() => {
-          if (isSelecting) {
-            toggleRow(item.id);
-            return;
-          }
-          router.push(`/forms/entry-form?id=${item.id}`);
-        }}
-        className="flex-row items-center gap-3 rounded-[28px] px-3 py-3"
-        style={{
-          backgroundColor: selected ? alpha(appTheme.colors.primary, appTheme.isDark ? 0.24 : 0.12) : mutedSurface,
-          borderColor: selected ? alpha(appTheme.colors.primary, 0.5) : "transparent",
-          borderWidth: 1,
-        }}
-      >
-        <TransactionGlyph category={item.category} categoryColor={item.categoryColor} categoryIcon={item.categoryIcon} selected={selected} />
-        <View className="min-w-0 flex-1 gap-1.5">
-          <RNText numberOfLines={1} className="text-base font-semibold" style={{ color: appTheme.colors.foreground }}>{item.name}</RNText>
-          <View className="flex-row items-center gap-2 overflow-hidden">
-            {!hideTanggal ? <RNText className="text-xs" style={{ color: appTheme.colors.muted }}>{formatDateKey(item.date)}</RNText> : null}
-            <CategoryBadge category={item.category} categoryColor={item.categoryColor} categoryIcon={item.categoryIcon} />
-          </View>
-        </View>
-        <View className="items-end gap-1.5">
-          <RNText numberOfLines={1} className="text-right text-base font-bold" style={{ color: amountColor }}>
-            {isIncome ? "+" : "-"}{formatEntryAmount(item, currency, format, { compact: true })}
-          </RNText>
-          <View className="flex-row items-center gap-1">
-            <View className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: amountColor }} />
-            <RNText className="text-xs font-medium" style={{ color: appTheme.colors.muted }}>{typeLabel}</RNText>
-          </View>
-        </View>
-      </Pressable>
-    );
-  };
+  const renderEntry = ({ item }: { item: CashflowEntry }) => (
+    <CashflowTableRow
+      item={item}
+      isSelecting={isSelecting}
+      selected={!!rowSelection[item.id]}
+      toggleRow={toggleRow}
+      onMove={handleRowMove}
+      onDelete={handleRowDelete}
+      onSwipeOpen={handleSwipeOpen}
+      onSwipeClose={handleSwipeClose}
+      hideTanggal={hideTanggal}
+    />
+  );
 
   return (
     <View style={{ flex: 1 }}>
@@ -486,17 +628,17 @@ export function CashflowTable({ entries, dateFilter, onDateFilterChange, hideTan
         ListHeaderComponent={headerContent}
         ListFooterComponent={footerContent}
         ListEmptyComponent={emptyContent}
-        removeClippedSubviews={Platform.OS === "android"}
+        removeClippedSubviews={false}
         maxToRenderPerBatch={10}
         updateCellsBatchingPeriod={50}
         windowSize={5}
         initialNumToRender={10}
-        contentContainerStyle={{ gap: 8, paddingHorizontal: 20, paddingBottom: 40, paddingTop: 20 }}
+        contentContainerStyle={{ gap: 8, overflow: "visible", paddingHorizontal: 20, paddingBottom: 40, paddingTop: 20 }}
         contentInsetAdjustmentBehavior="automatic"
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
         refreshControl={refreshControl}
-        style={{ flex: 1 }}
+        style={{ flex: 1, overflow: "visible" }}
       />
       <Modal transparent animationType="fade" visible={showMovePicker} onRequestClose={() => !isMoving && setShowMovePicker(false)}>
         <Pressable className="flex-1 justify-end bg-black/40 px-4 pb-8" onPress={() => !isMoving && setShowMovePicker(false)}>

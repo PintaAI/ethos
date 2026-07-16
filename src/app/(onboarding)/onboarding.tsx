@@ -117,6 +117,7 @@ function ProfilePreviewBody() {
       updateStatus="Up to date"
       isCheckingForUpdate={false}
       isUpdatingPhoto={false}
+      notificationsEnabled
       onSignOut={() => {}}
       onSyncNow={() => {}}
       onCheckForUpdates={() => {}}
@@ -125,6 +126,7 @@ function ProfilePreviewBody() {
       onContactSupport={() => {}}
       onOpenAccount={() => {}}
       onOpenFontSettings={() => {}}
+      onOpenNotificationSettings={() => {}}
       onOpenAuth={() => {}}
       onOpenOnboarding={() => {}}
     />
@@ -265,8 +267,8 @@ export default function OnboardingScreen() {
               </View>
 
               <View
-                className="my-6 flex-1 overflow-hidden rounded-[32px] border"
-                style={{ borderColor: alpha(appTheme.colors.primary, 0.18) }}
+                className="flex-1 overflow-hidden rounded-[32px] border"
+                style={{ borderColor: alpha(appTheme.colors.primary, 0.18), transform: [{ scale: 0.85 }] }}
               >
                 <SlidePreview body={slide.body} />
               </View>

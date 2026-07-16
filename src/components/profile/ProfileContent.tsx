@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Linking } from "react-native";
+import { Alert, AppState, Linking } from "react-native";
 import { router, type Href } from "expo-router";
 import { useSQLiteContext } from "expo-sqlite";
 import * as Updates from "expo-updates";
@@ -12,10 +12,14 @@ import { clearCashflowDatabase } from "@/data/cashflow/schema";
 import { useCashflowData } from "@/data/cashflow/CashflowDataProvider";
 import { updateProfile } from "@/lib/api/profile";
 import { clearPreferences } from "@/lib/preferences";
+import { notificationsAreAllowedAsync } from "@/lib/notifications";
 import { formatRelativeTime } from "@/lib/relativeTime";
+import { waitForSyncIdleAsync } from "@/lib/sync/syncEngine";
+import { reconcileSyncBackgroundTaskAsync } from "@/tasks/syncBackground";
 
 const ACCOUNT_ROUTE = "/(cashflow)/(tabs)/profile/account" as Href;
 const FONT_SETTINGS_ROUTE = "/(cashflow)/(tabs)/profile/font-settings" as Href;
+const REMINDER_SETTINGS_ROUTE = "/forms/reminder" as Href;
 const ONBOARDING_ROUTE = "/onboarding" as Href;
 const PRIVACY_POLICY_URL = "https://cashflow-notion.vercel.app/privacy";
 const SUPPORT_EMAIL = "rorezxez@gmail.com";
@@ -29,6 +33,21 @@ export function ProfileContent() {
   const updates = Updates.useUpdates();
   const [isCheckingForUpdate, setIsCheckingForUpdate] = useState(false);
   const [isUpdatingPhoto, setIsUpdatingPhoto] = useState(false);
+  const [notificationsEnabled, setNotificationsEnabled] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    const refreshNotificationStatus = () => {
+      notificationsAreAllowedAsync()
+        .then(setNotificationsEnabled)
+        .catch((error) => console.warn("Failed to read notification permission", error));
+    };
+
+    refreshNotificationStatus();
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") refreshNotificationStatus();
+    });
+    return () => subscription.remove();
+  }, []);
 
   const updateProfilePhoto = async () => {
     if (!auth.isAuthenticated || isUpdatingPhoto) return;
@@ -106,6 +125,12 @@ export function ProfileContent() {
 
   const handleSignOut = async () => {
     try {
+      await reconcileSyncBackgroundTaskAsync(false);
+      await waitForSyncIdleAsync();
+    } catch (error) {
+      console.warn("Failed to disable background sync on sign out", error);
+    }
+    try {
       await clearCashflowDatabase(db);
       await clearPreferences({ preserveOnboarding: true });
       await cashflowData.refresh();
@@ -153,6 +178,7 @@ export function ProfileContent() {
       updateStatus={updateStatus}
       isCheckingForUpdate={isCheckingForUpdate}
       isUpdatingPhoto={isUpdatingPhoto}
+      notificationsEnabled={notificationsEnabled}
       onSignOut={handleSignOut}
       onSyncNow={() => void sync.syncNow()}
       onCheckForUpdates={() => void checkForUpdates()}
@@ -161,6 +187,7 @@ export function ProfileContent() {
       onContactSupport={contactSupport}
       onOpenAccount={() => router.push(ACCOUNT_ROUTE)}
       onOpenFontSettings={() => router.push(FONT_SETTINGS_ROUTE)}
+      onOpenNotificationSettings={() => router.push(REMINDER_SETTINGS_ROUTE)}
       onOpenAuth={() => router.push("/auth")}
       onOpenOnboarding={() => router.push(ONBOARDING_ROUTE)}
     />

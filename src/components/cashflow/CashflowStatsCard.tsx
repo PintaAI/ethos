@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Animated, Easing, Pressable, View } from "react-native";
 import { SymbolView, type AndroidSymbol, type SFSymbol } from "expo-symbols";
 import { router } from "expo-router";
@@ -91,7 +91,7 @@ function StatSymbol({ name, color }: { name: StatSymbolName; color: string }) {
 }
 
 function SkeletonBlock({ className, color, style }: { className?: string; color: string; style?: object }) {
-  const opacity = useRef(new Animated.Value(0.42)).current;
+  const [opacity] = useState(() => new Animated.Value(0.42));
 
   useEffect(() => {
     const animation = Animated.loop(

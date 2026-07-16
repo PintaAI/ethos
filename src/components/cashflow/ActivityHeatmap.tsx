@@ -316,12 +316,14 @@ function HeatmapLegend() {
 export function ActivityHeatmap({ activity, selectedDate, onDateSelect }: ActivityHeatmapProps) {
   const appTheme = useAppTheme();
   const { width } = useWindowDimensions();
-  const [view, setView] = useState<ActivityView>("grid");
+  const [view, setView] = useState<ActivityView>("calendar");
   const isWide = width >= 640;
   const hasLoggedToday = activity.currentStreak > 0;
 
   useEffect(() => {
-    getPreference("activityView").then((saved) => setView(saved));
+    getPreference("activityView").then((saved) => {
+      if (saved) setView(saved as ActivityView);
+    });
   }, []);
 
   const handleViewChange = useCallback((nextView: ActivityView) => {

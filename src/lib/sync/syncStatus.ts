@@ -81,31 +81,34 @@ export async function upsertByRemoteId(
   if (!remoteId) throw new Error("upsertByRemoteId: remote_id is required");
 
   const columns = Object.keys(fields);
-  const existing = await db.getFirstAsync<{ id: string }>(
-    `SELECT id FROM ${table} WHERE remote_id = ? LIMIT 1`,
-    remoteId,
-  );
 
-  if (existing) {
-    if (columns.length === 0) return;
-    const setClause = columns.map((c) => `${c} = ?`).join(", ");
-    const values = columns.map((c) => fields[c]);
-    await db.runAsync(
-      `UPDATE ${table} SET ${setClause}, sync_status = 'synced', remote_id = ? WHERE id = ?`,
-      ...values,
+  await db.withExclusiveTransactionAsync(async (txn) => {
+    const existing = await txn.getFirstAsync<{ id: string }>(
+      `SELECT id FROM ${table} WHERE remote_id = ? LIMIT 1`,
       remoteId,
-      existing.id,
     );
-    return;
-  }
 
-  const allColumns = [...columns, "remote_id"];
-  const placeholders = allColumns.map(() => "?").join(", ");
-  const values = allColumns.map((c) => (c === "remote_id" ? remoteId : fields[c]));
-  await db.runAsync(
-    `INSERT INTO ${table} (${allColumns.join(", ")}, sync_status) VALUES (${placeholders}, 'synced')`,
-    ...values,
-  );
+    if (existing) {
+      if (columns.length === 0) return;
+      const setClause = columns.map((c) => `${c} = ?`).join(", ");
+      const values = columns.map((c) => fields[c]);
+      await txn.runAsync(
+        `UPDATE ${table} SET ${setClause}, sync_status = 'synced', remote_id = ? WHERE id = ?`,
+        ...values,
+        remoteId,
+        existing.id,
+      );
+      return;
+    }
+
+    const allColumns = [...columns, "remote_id"];
+    const placeholders = allColumns.map(() => "?").join(", ");
+    const values = allColumns.map((c) => (c === "remote_id" ? remoteId : fields[c]));
+    await txn.runAsync(
+      `INSERT INTO ${table} (${allColumns.join(", ")}, sync_status) VALUES (${placeholders}, 'synced')`,
+      ...values,
+    );
+  });
 }
 
 export async function hardDeleteByRemoteId(db: SQLiteDatabase, table: string, remoteId: string): Promise<void> {

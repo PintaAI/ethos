@@ -84,7 +84,6 @@ export type ServerRecurringEntry = {
   nominal: number;
   io: Io;
   frequency: RecurringFrequency;
-  reminderTime: string;
   startDate: string;
   categoryId: string | null;
   dayOfWeek: number | null;

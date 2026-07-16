@@ -19,7 +19,6 @@ import { useCashflowData } from "@/data/cashflow/CashflowDataProvider";
 import type { RecurringFrequency } from "@/data/cashflow/types";
 import { alpha } from "@/lib/color";
 import { formatDateKey, toDateKey } from "@/lib/date";
-import { requestAutomaticEntryNotificationPermissionAsync } from "@/tasks/automaticEntries";
 
 const FREQUENCIES = [
   { value: "daily", icon: "sun.max.fill" },
@@ -37,20 +36,6 @@ function getDateDaysAhead(daysAhead: number) {
 function parseAmountInput(value: string) {
   const parsed = parseInt(value, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
-}
-
-function reminderTimeToDate(value: string) {
-  const [hour, minute] = value.split(":").map(Number);
-  const date = new Date();
-  date.setHours(hour, minute, 0, 0);
-  return date;
-}
-
-function formatReminderTime(value: string) {
-  return reminderTimeToDate(value).toLocaleTimeString(undefined, {
-    hour: "numeric",
-    minute: "2-digit",
-  });
 }
 
 function Section({ title, icon, children }: { title: string; icon: SFSymbol; children: ReactNode }) {
@@ -125,9 +110,7 @@ export default function AutomaticEntryFormSheet() {
   const [ioIndex, setIoIndex] = useState(1);
   const [frequencyIndex, setFrequencyIndex] = useState(1);
   const [nextDate, setNextDate] = useState(() => toDateKey(getDateDaysAhead(1)));
-  const [reminderTime, setReminderTime] = useState("09:00");
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [showTimePicker, setShowTimePicker] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
   const borderColor = alpha(appTheme.colors.foreground, appTheme.isDark ? 0.09 : 0.07);
@@ -165,7 +148,6 @@ export default function AutomaticEntryFormSheet() {
     setIoIndex(1);
     setFrequencyIndex(1);
     setNextDate(toDateKey(getDateDaysAhead(1)));
-    setReminderTime("09:00");
     resetCategoryIndex();
   };
 
@@ -184,7 +166,6 @@ export default function AutomaticEntryFormSheet() {
 
     setIsSaving(true);
     try {
-      const notificationsAllowed = await requestAutomaticEntryNotificationPermissionAsync();
       await createRecurringEntry({
         name: trimmed,
         nominal,
@@ -192,12 +173,8 @@ export default function AutomaticEntryFormSheet() {
         io: ioIndex === 0 ? "Income" : "Expenses",
         frequency: FREQUENCIES[frequencyIndex].value,
         nextDate,
-        reminderTime,
       });
       resetForm();
-      if (!notificationsAllowed) {
-        Alert.alert(t("autoEntry.notificationsDisabledTitle"), t("autoEntry.notificationsDisabledMessage"));
-      }
     } finally {
       setIsSaving(false);
     }
@@ -206,7 +183,7 @@ export default function AutomaticEntryFormSheet() {
   const confirmDelete = (id: string, entryName: string) => {
     Alert.alert(t("autoEntry.removeTitle"), t("autoEntry.removeMessage", { name: entryName }), [
       { text: t("common.cancel"), style: "cancel" },
-      { text: t("common.remove"), style: "destructive", onPress: () => deleteRecurringEntry(id) },
+      { text: t("common.remove"), style: "destructive", onPress: () => deleteRecurringEntry(id).catch(console.error) },
     ]);
   };
 
@@ -312,27 +289,6 @@ export default function AutomaticEntryFormSheet() {
               </Text>
             </Pressable>
 
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => setShowTimePicker(true)}
-              className="min-h-14 flex-row items-center gap-3 rounded-3xl px-4 py-3"
-              style={{ backgroundColor: rowSurface }}
-            >
-              <View className="h-10 w-10 items-center justify-center rounded-2xl" style={{ backgroundColor: alpha(appTheme.colors.primary, 0.14) }}>
-                <AppSymbol name="clock.fill" size={17} tintColor={appTheme.colors.primary} fallback={<Text style={{ color: appTheme.colors.primary }}>•</Text>} />
-              </View>
-              <View className="min-w-0 flex-1">
-                <Text className="text-xs font-semibold uppercase tracking-wide" style={{ color: appTheme.colors.muted }}>
-                  {t("autoEntry.reminderTime")}
-                </Text>
-                <Text className="mt-0.5 text-base font-bold" style={{ color: appTheme.colors.foreground }}>
-                  {formatReminderTime(reminderTime)}
-                </Text>
-              </View>
-              <Text className="text-sm font-semibold" style={{ color: appTheme.colors.primary }}>
-                {t("transfer.change")}
-              </Text>
-            </Pressable>
           </View>
         </Section>
 
@@ -371,7 +327,7 @@ export default function AutomaticEntryFormSheet() {
                       {[currency.format(entry.nominal, { compact: true }), ioLabel, frequencyLabel, category?.name ?? t("autoEntry.noCategory")].join(" · ")}
                     </Text>
                     <Text className="mt-1 text-xs font-semibold" style={{ color: appTheme.colors.primary }}>
-                      {t("autoEntry.nextLabel", { date: formatDateKey(entry.nextDate), time: formatReminderTime(entry.reminderTime) })}
+                      {t("autoEntry.nextLabel", { date: formatDateKey(entry.nextDate) })}
                     </Text>
                   </View>
                   <Pressable
@@ -417,34 +373,6 @@ export default function AutomaticEntryFormSheet() {
         </Modal>
       ) : null}
 
-      {showTimePicker ? (
-        <Modal transparent animationType="fade" onRequestClose={() => setShowTimePicker(false)}>
-          <Pressable className="flex-1 justify-end px-4 pb-8" style={{ backgroundColor: "rgba(0,0,0,0.35)" }} onPress={() => setShowTimePicker(false)}>
-            <Pressable
-              className="rounded-3xl border p-4"
-              style={{
-                backgroundColor: appTheme.colors.background,
-                borderColor: alpha(appTheme.colors.foreground, appTheme.isDark ? 0.12 : 0.1),
-              }}
-            >
-              <DateTimePicker
-                value={reminderTimeToDate(reminderTime)}
-                mode="time"
-                presentation="inline"
-                display="spinner"
-                accentColor={appTheme.colors.primary}
-                onValueChange={(_event, date) => {
-                  if (date) {
-                    setReminderTime(`${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`);
-                  }
-                  setShowTimePicker(false);
-                }}
-                onDismiss={() => setShowTimePicker(false)}
-              />
-            </Pressable>
-          </Pressable>
-        </Modal>
-      ) : null}
     </>
   );
 }

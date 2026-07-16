@@ -96,7 +96,6 @@ type RecurringEntryRow = {
   io: "Income" | "Expenses";
   frequency: RecurringFrequency;
   next_date: string;
-  reminder_time: string;
 };
 
 type EntryWriter = Pick<SQLiteDatabase, "getFirstAsync" | "runAsync">;
@@ -185,7 +184,6 @@ function mapRecurringEntry(row: RecurringEntryRow): CashflowRecurringEntry {
     io: row.io,
     frequency: row.frequency,
     nextDate: row.next_date,
-    reminderTime: row.reminder_time,
   };
 }
 
@@ -322,7 +320,7 @@ export async function listQuickFills(db: SQLiteDatabase, managementId: string): 
 
 export async function listRecurringEntries(db: SQLiteDatabase, managementId: string): Promise<CashflowRecurringEntry[]> {
   const rows = await db.getAllAsync<RecurringEntryRow>(
-    `SELECT id, name, nominal, category_id, management_id, io, frequency, next_date, reminder_time
+    `SELECT id, name, nominal, category_id, management_id, io, frequency, next_date
      FROM recurring_entries
      WHERE management_id = ? AND deleted_at IS NULL
      ORDER BY next_date ASC, created_at ASC`,
@@ -332,22 +330,10 @@ export async function listRecurringEntries(db: SQLiteDatabase, managementId: str
   return rows.map(mapRecurringEntry);
 }
 
-export async function listAllRecurringEntries(db: SQLiteDatabase): Promise<CashflowRecurringEntry[]> {
-  const rows = await db.getAllAsync<RecurringEntryRow>(
-    `SELECT id, name, nominal, category_id, management_id, io, frequency, next_date, reminder_time
-     FROM recurring_entries
-     WHERE deleted_at IS NULL
-     ORDER BY next_date ASC, created_at ASC`,
-  );
-
-  return rows.map(mapRecurringEntry);
-}
-
 async function materializeDueRecurringEntriesWithWriter(db: RecurringEntryWriter, managementId: string) {
-  const now = new Date();
-  const today = toDateKey(now);
+  const today = toDateKey(new Date());
   const rows = await db.getAllAsync<RecurringEntryRow>(
-    `SELECT id, name, nominal, category_id, management_id, io, frequency, next_date, reminder_time
+    `SELECT id, name, nominal, category_id, management_id, io, frequency, next_date
      FROM recurring_entries
      WHERE management_id = ? AND deleted_at IS NULL AND next_date <= ?
      ORDER BY next_date ASC, created_at ASC`,
@@ -361,11 +347,6 @@ async function materializeDueRecurringEntriesWithWriter(db: RecurringEntryWriter
     let nextDate = row.next_date;
 
     while (entryDate <= today) {
-      const scheduledAt = parseDateKey(entryDate);
-      const [hour, minute] = row.reminder_time.split(":").map(Number);
-      scheduledAt.setHours(hour, minute, 0, 0);
-      if (scheduledAt > now) break;
-
       await createEntry(db, managementId, {
         name: row.name,
         nominal: row.nominal,
@@ -466,8 +447,8 @@ export async function createRecurringEntry(db: SQLiteDatabase, managementId: str
   const createdAt = nowIso();
 
   await db.runAsync(
-    `INSERT INTO recurring_entries (id, name, nominal, category_id, io, management_id, frequency, next_date, reminder_time, created_at, updated_at, sync_status)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+    `INSERT INTO recurring_entries (id, name, nominal, category_id, io, management_id, frequency, next_date, created_at, updated_at, sync_status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
     createId("recurring-entry"),
     trimmedName,
     input.nominal,
@@ -476,7 +457,6 @@ export async function createRecurringEntry(db: SQLiteDatabase, managementId: str
     managementId,
     input.frequency,
     input.nextDate,
-    input.reminderTime,
     createdAt,
     createdAt,
   );
@@ -516,34 +496,37 @@ export async function createManagement(db: SQLiteDatabase, input: CreateManageme
   const trimmedName = input.name.trim();
   if (!trimmedName) return;
 
-  const createdAt = nowIso();
-  const id = createId("management");
-  const image = input.image?.trim() || null;
-  const user = await db.getFirstAsync<{ id: string }>("SELECT id FROM users WHERE deleted_at IS NULL ORDER BY created_at LIMIT 1");
+  await db.withExclusiveTransactionAsync(async (txn) => {
+    const createdAt = nowIso();
+    const id = createId("management");
+    const image = input.image?.trim() || null;
+    const user = await txn.getFirstAsync<{ id: string }>("SELECT id FROM users WHERE deleted_at IS NULL ORDER BY created_at LIMIT 1");
 
-  await db.runAsync(
-    `INSERT INTO managements (id, name, image, created_at, updated_at, sync_status)
-     VALUES (?, ?, ?, ?, ?, 'pending')`,
-    id,
-    trimmedName,
-    image,
-    createdAt,
-    createdAt,
-  );
-
-  if (user) {
-    await db.runAsync(
-      `INSERT INTO management_members (id, management_id, user_id, role, created_at, updated_at, sync_status)
-       VALUES (?, ?, ?, 'owner', ?, ?, 'pending')`,
-      createId("management-member"),
+    await txn.runAsync(
+      "INSERT INTO managements (id, name, image, created_at, updated_at, sync_status) VALUES (?, ?, ?, ?, ?, 'pending')",
       id,
-      user.id,
+      trimmedName,
+      image,
       createdAt,
       createdAt,
     );
-  }
 
-  await setActiveManagementId(db, id);
+    if (user) {
+      await txn.runAsync(
+        "INSERT INTO management_members (id, management_id, user_id, role, created_at, updated_at, sync_status) VALUES (?, ?, ?, 'owner', ?, ?, 'pending')",
+        createId("management-member"),
+        id,
+        user.id,
+        createdAt,
+        createdAt,
+      );
+    }
+
+    await txn.runAsync(
+      "INSERT INTO app_preferences (key, value) VALUES ('active_management_id', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      id,
+    );
+  });
 }
 
 export async function updateManagement(db: SQLiteDatabase, managementId: string, input: UpdateManagementInput) {
@@ -570,31 +553,34 @@ export async function updateManagement(db: SQLiteDatabase, managementId: string,
 }
 
 export async function deleteManagement(db: SQLiteDatabase, managementId: string) {
-  const updatedAt = nowIso();
-  const activeManagementId = await getActiveManagementId(db);
+  await db.withExclusiveTransactionAsync(async (txn) => {
+    const updatedAt = nowIso();
 
-  await db.runAsync(
-    `UPDATE managements SET
-       deleted_at = ?,
-       updated_at = ?,
-       sync_status = 'deleted'
-     WHERE id = ? AND deleted_at IS NULL`,
-    updatedAt,
-    updatedAt,
-    managementId,
-  );
+    await txn.runAsync(
+      "UPDATE managements SET deleted_at = ?, updated_at = ?, sync_status = 'deleted' WHERE id = ? AND deleted_at IS NULL",
+      updatedAt,
+      updatedAt,
+      managementId,
+    );
 
-  if (activeManagementId === managementId) {
-    const nextManagement = await db.getFirstAsync<{ id: string }>(
+    const activeRow = await txn.getFirstAsync<{ value: string }>(
+      "SELECT value FROM app_preferences WHERE key = 'active_management_id'",
+    );
+    if (activeRow?.value !== managementId) return;
+
+    const nextManagement = await txn.getFirstAsync<{ id: string }>(
       "SELECT id FROM managements WHERE deleted_at IS NULL ORDER BY created_at LIMIT 1",
     );
 
     if (nextManagement) {
-      await setActiveManagementId(db, nextManagement.id);
+      await txn.runAsync(
+        "INSERT INTO app_preferences (key, value) VALUES ('active_management_id', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        nextManagement.id,
+      );
     } else {
-      await db.runAsync("DELETE FROM app_preferences WHERE key = 'active_management_id'");
+      await txn.runAsync("DELETE FROM app_preferences WHERE key = 'active_management_id'");
     }
-  }
+  });
 }
 
 export async function updateManagementImageTheme(db: SQLiteDatabase, managementId: string, imageTheme: ManagementImageTheme) {

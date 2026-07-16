@@ -1,4 +1,4 @@
-import { router, Stack } from "expo-router";
+import { router, Stack, useLocalSearchParams } from "expo-router";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toolbarIcons } from "@/config/toolbarIcons";
@@ -9,11 +9,29 @@ import { useCashflowData } from "@/data/cashflow/CashflowDataProvider";
 import { buildAnalytics, buildStats } from "@/data/cashflow/repository";
 
 export default function SummaryScreen() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const { from, to, month, review } = useLocalSearchParams<{ from?: string; to?: string; month?: string; review?: string }>();
   const { open } = useDrawer();
   const { analytics, entries, categories, activeManagement } = useCashflowData();
   const [datePeriod, setDatePeriod] = useState<DatePeriod>(DATE_PRESETS[0]);
   const [selectedMonth, setSelectedMonth] = useState(() => new Date());
+  const [appliedReview, setAppliedReview] = useState<string | null>(null);
+
+  const reviewKey = from && to && month && review && /^\d{4}-\d{2}$/.test(month)
+    ? `${from}:${to}:${month}:${review}:${i18n.language}`
+    : null;
+  if (reviewKey && reviewKey !== appliedReview) {
+    const [year, monthNumber] = month!.split("-").map(Number);
+    const nextMonth = new Date(year, monthNumber - 1, 1);
+    setAppliedReview(reviewKey);
+    setSelectedMonth(nextMonth);
+    setDatePeriod({
+      key: `month-${from}`,
+      label: nextMonth.toLocaleDateString(i18n.language === "id" ? "id-ID" : "en-US", { month: "long", year: "numeric" }),
+      from,
+      to,
+    });
+  }
 
   const filteredEntries = useMemo(() => {
     if (datePeriod.allTime) return entries;

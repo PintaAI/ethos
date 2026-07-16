@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Alert, Modal, Platform, Pressable, ScrollView, View } from "react-native";
+import { Image } from "expo-image";
 import ExpoDateTimePicker from "@expo/ui/community/datetime-picker";
 import { router, Stack } from "expo-router";
 import { toolbarIcons } from "@/config/toolbarIcons";
@@ -15,6 +16,8 @@ import { useCashflowData } from "@/data/cashflow/CashflowDataProvider";
 import type { CashflowManagement } from "@/data/cashflow/types";
 import { alpha } from "@/lib/color";
 import { formatDateKey, toDateKey } from "@/lib/date";
+import { walletImageToIcon } from "@/lib/categoryMapping";
+import { getManagementImageSource } from "@/lib/protectedImage";
 
 const DATE_OPTIONS = [
   { label: "Today", daysAgo: 0 },
@@ -33,6 +36,7 @@ function WalletChoice({ wallet, selected, disabled, onPress }: { wallet: Cashflo
   const appTheme = useAppTheme();
   const currency = useCurrency();
   const tint = wallet.balance < 0 ? appTheme.colors.negative : appTheme.colors.primary;
+  const imageSource = getManagementImageSource(wallet.image);
 
   return (
     <Pressable
@@ -46,8 +50,12 @@ function WalletChoice({ wallet, selected, disabled, onPress }: { wallet: Cashflo
         opacity: disabled ? 0.45 : 1,
       }}
     >
-      <View className="h-9 w-9 items-center justify-center rounded-2xl" style={{ backgroundColor: alpha(tint, 0.14) }}>
-        <AppSymbol name="wallet.pass.fill" size={16} tintColor={tint} fallback={<Text style={{ color: tint }}>•</Text>} />
+      <View className="h-9 w-9 items-center justify-center overflow-hidden rounded-2xl" style={{ backgroundColor: alpha(tint, 0.14) }}>
+        {imageSource ? (
+          <Image source={imageSource} contentFit="cover" style={{ height: "100%", width: "100%" }} />
+        ) : (
+          <AppSymbol name={walletImageToIcon(wallet.image)} size={16} tintColor={tint} fallback={<Text style={{ color: tint }}>•</Text>} />
+        )}
       </View>
       <View className="min-w-0 flex-1">
         <Text numberOfLines={1} className="text-sm font-bold" style={{ color: appTheme.colors.foreground }}>{wallet.name}</Text>
@@ -61,6 +69,8 @@ function WalletChoice({ wallet, selected, disabled, onPress }: { wallet: Cashflo
 function WalletRow({ label, wallet, afterBalance, active, activeLabel, changeLabel, onPress }: { label: string; wallet: CashflowManagement | null; afterBalance?: number; active?: boolean; activeLabel: string; changeLabel: string; onPress: () => void }) {
   const appTheme = useAppTheme();
   const currency = useCurrency();
+  const imageSource = wallet ? getManagementImageSource(wallet.image) : null;
+  const tint = active ? appTheme.colors.primary : appTheme.colors.muted;
 
   return (
     <Pressable
@@ -69,8 +79,12 @@ function WalletRow({ label, wallet, afterBalance, active, activeLabel, changeLab
       onPress={onPress}
       style={{ backgroundColor: alpha(appTheme.colors.foreground, appTheme.isDark ? 0.045 : 0.035) }}
     >
-      <View className="h-10 w-10 items-center justify-center rounded-2xl" style={{ backgroundColor: alpha(active ? appTheme.colors.primary : appTheme.colors.muted, 0.14) }}>
-        <AppSymbol name="wallet.pass.fill" size={17} tintColor={active ? appTheme.colors.primary : appTheme.colors.muted} fallback={<Text style={{ color: appTheme.colors.muted }}>•</Text>} />
+      <View className="h-10 w-10 items-center justify-center overflow-hidden rounded-2xl" style={{ backgroundColor: alpha(tint, 0.14) }}>
+        {wallet && imageSource ? (
+          <Image source={imageSource} contentFit="cover" style={{ height: "100%", width: "100%" }} />
+        ) : (
+          <AppSymbol name={wallet ? walletImageToIcon(wallet.image) : "wallet.pass.fill"} size={17} tintColor={tint} fallback={<Text style={{ color: tint }}>•</Text>} />
+        )}
       </View>
       <View className="min-w-0 flex-1">
         <View className="flex-row items-center gap-2">
