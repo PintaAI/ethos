@@ -25,6 +25,13 @@ Read the exact versioned docs at https://docs.expo.dev/versions/v56.0.0/ before 
 - `app.json` plugins: `expo-router`, `expo-splash-screen`.
 - `@expo/ui` components are available.
 
+## Server: `/root/projects/cashflow-notion`
+
+- Server Next.js app di `https://cashflow-notion.vercel.app`
+- API base URL: `https://cashflow-notion.vercel.app/api/v1` (dari `src/lib/api/client.ts:5`)
+- Auth: better-auth via cookie (dari `src/lib/auth-client.ts`)
+- **Sudah terindex MCP** sebagai `root-projects-cashflow-notion` — cek routes, schema DB, actions via `search_graph`/`get_code_snippet`
+
 ## Architecture
 
 ```text

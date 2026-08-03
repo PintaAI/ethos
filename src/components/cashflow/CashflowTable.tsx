@@ -635,7 +635,7 @@ export function CashflowTable({ entries, dateFilter, onDateFilterChange, hideTan
   );
 
   return (
-    <View style={{ flex: 1 }}>
+    <>
       <FlatList
         data={visibleEntries}
         keyExtractor={entryKeyExtractor}
@@ -655,7 +655,7 @@ export function CashflowTable({ entries, dateFilter, onDateFilterChange, hideTan
         refreshControl={refreshControl}
         onEndReached={handleLoadMore}
         onEndReachedThreshold={0.35}
-        style={{ flex: 1, overflow: "visible" }}
+        style={{ flex: 1, overflow: "visible", backgroundColor: appTheme.colors.background }}
       />
       <Modal transparent animationType="fade" visible={showMovePicker} onRequestClose={() => !isMoving && setShowMovePicker(false)}>
         <Pressable className="flex-1 justify-end bg-black/40 px-4 pb-8" onPress={() => !isMoving && setShowMovePicker(false)}>
@@ -691,6 +691,6 @@ export function CashflowTable({ entries, dateFilter, onDateFilterChange, hideTan
           </Pressable>
         </Pressable>
       </Modal>
-    </View>
+    </>
   );
 }

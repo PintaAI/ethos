@@ -2,7 +2,7 @@ import "../global.css";
 import "@/i18n";
 import "@/tasks/automaticEntries";
 import "@/tasks/syncBackground";
-import { Suspense, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import * as Notifications from "expo-notifications";
 import { ThemeProvider, DefaultTheme, DarkTheme, Stack, router, type Href } from "expo-router";
@@ -124,14 +124,12 @@ function RootNavigator() {
                   </Pressable>
                 </View>
             ) : (
-              <Suspense fallback={<View style={{ flex: 1, backgroundColor: appTheme.colors.background }} />}>
-                <SQLiteProvider
-                  key={databaseKey}
-                  databaseName="ethos-cashflow.db"
-                  onInit={(db) => withDbLock(() => migrateCashflowDatabase(db))}
-                  onError={setDatabaseError}
-                  useSuspense
-                >
+              <SQLiteProvider
+                key={databaseKey}
+                databaseName="ethos-cashflow.db"
+                onInit={(db) => withDbLock(() => migrateCashflowDatabase(db))}
+                onError={setDatabaseError}
+              >
                   <DatabaseReadyRouting language={i18n.resolvedLanguage} quickActionTitle={t("quickActions.newEntry")} />
                   <CashflowDataProvider>
                     <CashflowStatsWidgetSync />
@@ -190,8 +188,7 @@ function RootNavigator() {
                       </NotesDataProvider>
                     </SelfImprovementProvider>
                   </CashflowDataProvider>
-                </SQLiteProvider>
-              </Suspense>
+              </SQLiteProvider>
             )}
           </CurrencyProvider>
         </AuthProvider>
