@@ -44,8 +44,12 @@ const entryFormOptions = Platform.OS === "ios"
 
 const walletOptions = Platform.OS === "ios" ? formSheetOptions : androidSheetOptions([0.6, 1]);
 const walletDetailOptions = Platform.OS === "ios" ? formSheetOptions : androidSheetOptions([1]);
-const categoriesOptions = Platform.OS === "ios" ? formSheetOptions : androidSheetOptions([0.65, 1]);
-const categoryDetailOptions = Platform.OS === "ios" ? formSheetOptions : androidSheetOptions([0.82, 1], "last");
+const categoriesOptions = Platform.OS === "ios"
+  ? { ...formSheetOptions, sheetAllowedDetents: [0.9] as [number] }
+  : androidSheetOptions([0.9]);
+const categoryDetailOptions = Platform.OS === "ios"
+  ? { ...formSheetOptions, sheetAllowedDetents: [0.9] as [number] }
+  : androidSheetOptions([0.9]);
 const categoryEntriesOptions = Platform.OS === "ios"
   ? { ...formSheetOptions, sheetAllowedDetents: [0.72, 0.92] as [number, number] }
   : androidSheetOptions([0.5, 1]);

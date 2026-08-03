@@ -1,63 +1,34 @@
-import { useMemo } from "react";
-import { View, Pressable } from "react-native";
+import { View, Pressable, ScrollView } from "react-native";
 import { AppText as Text } from "@/components/AppText";
-import { usePathname, type Href, router } from "expo-router";
+import { useGlobalSearchParams, usePathname, useSegments, router } from "expo-router";
 import Animated, { useAnimatedStyle, interpolate } from "react-native-reanimated";
 import { useDrawerProgress } from "react-native-drawer-layout";
 import { GlassBox } from "@/components/GlassBox";
 import { Image } from "expo-image";
-import type { SFSymbol } from "expo-symbols";
 import { AppSymbol } from "@/components/AppSymbol";
 import { useAuth } from "@/components/AuthProvider";
 import { useAppTheme } from "@/components/AppTheme";
 import { useTranslation } from "react-i18next";
-
-export type SidebarSubItem = {
-  label: string;
-  icon?: SFSymbol;
-  route?: Href;
-  onPress?: () => void;
-  activeRoutes?: string[];
-  badge?: string;
-};
-
-export type SidebarNavItem = {
-  label: string;
-  icon?: SFSymbol;
-  route?: Href;
-  onPress?: () => void;
-  subItems?: SidebarSubItem[];
-  activeRoutes?: string[];
-  badge?: string;
-};
-
-export type SidebarGroup = {
-  label?: string;
-  items: SidebarNavItem[];
-};
+import { useNotesData } from "@/data/notes/NotesDataProvider";
+import { buildSidebarSections } from "@/components/sidebar/config";
+import { getCurrentAppArea, isSidebarItemActive } from "@/components/sidebar/routing";
+import type { AppArea, SidebarItem } from "@/components/sidebar/types";
 
 type SidebarProps = {
   onClose: () => void;
   onOpenProfile: () => void;
-  groups?: SidebarGroup[];
 };
 
-function isItemActive(pathname: string, item: SidebarNavItem | SidebarSubItem): boolean {
-  if (item.activeRoutes) {
-    return item.activeRoutes.some((r) => {
-      if (r.endsWith("/*")) return pathname.startsWith(r.slice(0, -2));
-      return pathname === r;
-    });
-  }
-  if (item.route) {
-    const routeStr = typeof item.route === "string" ? item.route : String(item.route);
-    return pathname === routeStr || pathname.startsWith(`${routeStr}/`);
-  }
-  return false;
-}
-
-function hasAnyActiveChild(pathname: string, subItems: SidebarSubItem[]): boolean {
-  return subItems.some((sub) => isItemActive(pathname, sub));
+function hasActiveChild(
+  pathname: string,
+  children: SidebarItem[],
+  sectionArea: AppArea,
+  currentArea: AppArea,
+  activeNoteId?: string,
+): boolean {
+  return children.some((child) =>
+    isSidebarItemActive(pathname, child, sectionArea, currentArea, activeNoteId),
+  );
 }
 
 function SidebarNavRow({
@@ -66,7 +37,7 @@ function SidebarNavRow({
   isSubItem = false,
   onPress,
 }: {
-  item: SidebarNavItem | SidebarSubItem;
+  item: SidebarItem;
   isActive: boolean;
   isSubItem?: boolean;
   onPress: () => void;
@@ -97,29 +68,25 @@ function SidebarNavRow({
         />
       ) : null}
       <View className="flex-row items-center gap-2.5">
-        {item.icon ? (
-          <View
-            className="h-7 w-7 items-center justify-center rounded-full"
-            style={{
-              backgroundColor: isActive ? "transparent" : surface,
-            }}
-          >
-            <AppSymbol
-              name={item.icon}
-              size={iconSize}
-              tintColor={appTheme.colors.primary}
-              fallback={
-                <Text
-                  style={{ color: isActive ? appTheme.colors.primary : appTheme.colors.foreground, fontSize: iconSize }}
-                >
-                  •
-                </Text>
-              }
-            />
-          </View>
-        ) : (
-          <View className="h-7 w-7" />
-        )}
+        <View
+          className="h-7 w-7 items-center justify-center rounded-full"
+          style={{
+            backgroundColor: isActive ? "transparent" : surface,
+          }}
+        >
+          <AppSymbol
+            name={item.icon}
+            size={iconSize}
+            tintColor={appTheme.colors.primary}
+            fallback={
+              <Text
+                style={{ color: isActive ? appTheme.colors.primary : appTheme.colors.foreground, fontSize: iconSize }}
+              >
+                •
+              </Text>
+            }
+          />
+        </View>
         <Text
           numberOfLines={1}
           style={{
@@ -131,55 +98,24 @@ function SidebarNavRow({
         >
           {item.label}
         </Text>
-        {'badge' in item && item.badge ? (
-          <View
-            className="ml-auto rounded-full px-2 py-0.5"
-            style={{ backgroundColor: appTheme.colors.primary + "22" }}
-          >
-            <Text
-              style={{
-                color: appTheme.colors.primary,
-                fontSize: appTheme.textSize - 6,
-                fontWeight: "700",
-                letterSpacing: 0.5,
-              }}
-            >
-              {item.badge}
-            </Text>
-          </View>
-        ) : null}
       </View>
     </Pressable>
   );
 }
 
-export default function Sidebar({ onClose, onOpenProfile, groups: groupsProp }: SidebarProps) {
+export default function Sidebar({ onClose, onOpenProfile }: SidebarProps) {
   const { t } = useTranslation();
   const appTheme = useAppTheme();
   const auth = useAuth();
+  const { notes } = useNotesData();
   const pathname = usePathname();
+  const { id: routeNoteId } = useGlobalSearchParams<{ id?: string | string[] }>();
+  const activeNoteId = Array.isArray(routeNoteId) ? routeNoteId[0] : routeNoteId;
+  const segments = useSegments();
+  const currentArea = getCurrentAppArea(segments.map(String));
   const progress = useDrawerProgress();
 
-  const defaultGroups = useMemo<SidebarGroup[]>(() => [
-    {
-      label: t('sidebar.cashflow'),
-      items: [
-        { label: t('sidebar.home'), icon: "house.fill" as SFSymbol, route: "/home" as Href },
-        {
-          label: t('sidebar.wallet'),
-          icon: "wallet.pass.fill" as SFSymbol,
-          route: "/forms/wallet" as Href,
-          subItems: [{ label: t('sidebar.transfer'), icon: "arrow.left.arrow.right" as SFSymbol, route: "/forms/transfer" as Href }],
-        },
-        { label: t('sidebar.categoriesBudget'), icon: "chart.pie.fill" as SFSymbol, route: "/forms/categories" as Href },
-        { label: t('sidebar.quickFill'), icon: "bolt.fill" as SFSymbol, route: "/forms/quick-fill" as Href },
-        { label: t('sidebar.catatOtomatis'), icon: "repeat.circle.fill" as SFSymbol, route: "/forms/automatic-entry" as Href },
-        { label: t('audit.title'), icon: "checkmark.seal.fill" as SFSymbol, route: "/forms/audit" as Href },
-      ],
-    },
-  ], [t]);
-  const groups = groupsProp ?? defaultGroups;
-  const separatorLine = appTheme.isDark ? "rgba(255,255,255,0.12)" : "rgba(15,23,42,0.1)";
+  const sections = buildSidebarSections(notes, t);
 
   const animatedStyle = useAnimatedStyle(() => ({
     opacity: interpolate(progress.value, [0, 1], [0.85, 1]),
@@ -189,12 +125,13 @@ export default function Sidebar({ onClose, onOpenProfile, groups: groupsProp }: 
     ],
   }));
 
-  const handlePress = (item: SidebarNavItem | SidebarSubItem) => {
+  const handlePress = (item: SidebarItem) => {
     onClose();
-    if (item.onPress) {
-      item.onPress();
-    } else if (item.route) {
-      router.push(item.route);
+    const shouldReplace = item.replace || (item.noteId && pathname === "/journal/detail");
+    if (shouldReplace) {
+      router.replace(item.route, { withAnchor: item.withAnchor });
+    } else {
+      router.push(item.route, { withAnchor: item.withAnchor });
     }
   };
 
@@ -214,74 +151,82 @@ export default function Sidebar({ onClose, onOpenProfile, groups: groupsProp }: 
         </Text>
       </View>
 
-      {groups.map((group, gi) => (
-        <View
-          key={gi}
-          className="rounded-2xl px-1 py-2"
-          style={{
-            marginBottom: 10,
-            borderTopWidth: gi === 0 ? 0 : 1,
-            borderColor: separatorLine,
-          }}
-        >
-          {group.label ? (
+      <ScrollView
+        className="flex-1"
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 12 }}
+      >
+        {sections.map((section) => (
+          <View
+            key={section.area}
+            className="rounded-2xl px-1 py-2"
+            style={{
+              marginBottom: 10,
+            }}
+          >
             <View className="mb-1.5 flex-row items-center justify-between px-2">
               <Text
                 className="text-xs font-semibold uppercase tracking-[1.6px]"
                 style={{ color: appTheme.colors.muted }}
               >
-                {group.label}
+                {section.label}
               </Text>
               <Text className="text-xs font-bold" style={{ color: appTheme.colors.muted }}>
-                {group.items.length}
+                {section.items.length}
               </Text>
             </View>
-          ) : null}
-          <View style={{ gap: 1 }}>
-            {group.items.map((item, ii) => {
-              const active = isItemActive(pathname, item);
-              const childActive = item.subItems ? hasAnyActiveChild(pathname, item.subItems) : false;
+            <View style={{ gap: 1 }}>
+              {section.items.map((item) => {
+                const active = isSidebarItemActive(pathname, item, section.area, currentArea, activeNoteId);
+                const childActive = item.children
+                  ? hasActiveChild(pathname, item.children, section.area, currentArea, activeNoteId)
+                  : false;
 
-              return (
-                <View key={ii}>
-                  <SidebarNavRow
-                    item={item}
-                    isActive={active && !childActive}
-                    onPress={() => handlePress(item)}
-                  />
-                  {item.subItems ? (
-                    <View>
-                      <View
-                        style={{
-                          position: "absolute",
-                          left: 20,
-                          top: 0,
-                          bottom: 0,
-                          width: 2,
-                          backgroundColor: appTheme.colors.primary,
-                          opacity: 0.25,
-                          borderRadius: 1,
-                        }}
-                      />
-                      {item.subItems.map((sub, si) => (
-                        <SidebarNavRow
-                          key={si}
-                          item={sub}
-                          isSubItem
-                          isActive={isItemActive(pathname, sub)}
-                          onPress={() => handlePress(sub)}
+                return (
+                  <View key={item.id}>
+                    <SidebarNavRow
+                      item={item}
+                      isActive={active && !childActive}
+                      onPress={() => handlePress(item)}
+                    />
+                    {item.children ? (
+                      <View>
+                        <View
+                          style={{
+                            position: "absolute",
+                            left: 20,
+                            top: 0,
+                            bottom: 0,
+                            width: 2,
+                            backgroundColor: appTheme.colors.primary,
+                            opacity: 0.25,
+                            borderRadius: 1,
+                          }}
                         />
-                      ))}
-                    </View>
-                  ) : null}
-                </View>
-              );
-            })}
+                        {item.children.map((child) => (
+                          <SidebarNavRow
+                            key={child.id}
+                            item={child}
+                            isSubItem
+                            isActive={isSidebarItemActive(
+                              pathname,
+                              child,
+                              section.area,
+                              currentArea,
+                              activeNoteId,
+                            )}
+                            onPress={() => handlePress(child)}
+                          />
+                        ))}
+                      </View>
+                    ) : null}
+                  </View>
+                );
+              })}
+            </View>
           </View>
-        </View>
-      ))}
-
-      <View className="flex-1" />
+        ))}
+      </ScrollView>
 
       <Pressable
         className="overflow-hidden rounded-3xl"

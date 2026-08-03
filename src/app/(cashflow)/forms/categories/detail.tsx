@@ -21,6 +21,12 @@ const BUDGET_PERIODS = [
   { key: "monthly", labelKey: "categories.monthly" },
 ] as const satisfies readonly { key: BudgetPeriod; labelKey: string }[];
 
+const EMPTY_BUDGETS: Record<BudgetPeriod, number | null> = {
+  daily: null,
+  weekly: null,
+  monthly: null,
+};
+
 function categoryBudgetValue(category: CashflowCategory, period: BudgetPeriod) {
   if (period === "daily") return category.budgetDaily;
   if (period === "weekly") return category.budgetWeekly;
@@ -46,6 +52,7 @@ export default function CategoryDetailScreen() {
   const [name, setName] = useState(category?.name ?? "");
   const [color, setColor] = useState(category?.color ?? CATEGORY_COLOR_OPTIONS[0]);
   const [icon, setIcon] = useState((category?.icon ?? CATEGORY_ICON_OPTIONS[0]) as SFSymbol);
+  const [draftBudgets, setDraftBudgets] = useState<Record<BudgetPeriod, number | null>>(() => ({ ...EMPTY_BUDGETS }));
   const [isSaving, setIsSaving] = useState(false);
   const borderColor = appTheme.isDark ? "rgba(255,255,255,0.12)" : "rgba(15,23,42,0.1)";
   const surface = appTheme.isDark ? "rgba(255,255,255,0.055)" : "rgba(15,23,42,0.035)";
@@ -55,6 +62,7 @@ export default function CategoryDetailScreen() {
     setName(category?.name ?? "");
     setColor(category?.color ?? CATEGORY_COLOR_OPTIONS[0]);
     setIcon((category?.icon ?? CATEGORY_ICON_OPTIONS[0]) as SFSymbol);
+    setDraftBudgets({ ...EMPTY_BUDGETS });
   }
 
   const handleSave = async () => {
@@ -65,7 +73,12 @@ export default function CategoryDetailScreen() {
     setIsSaving(true);
     try {
       if (isNewCategory) {
-        await createCategory({ name: trimmed, color, icon });
+        const categoryId = await createCategory({ name: trimmed, color, icon });
+        if (!categoryId) throw new Error("Could not create the category right now.");
+        for (const period of BUDGET_PERIODS) {
+          const value = draftBudgets[period.key];
+          if (value) await updateCategoryBudget(categoryId, period.key, value);
+        }
       } else if (category) {
         await updateCategory(category.id, { name: trimmed, color, icon });
       }
@@ -141,39 +154,71 @@ export default function CategoryDetailScreen() {
           </View>
         </View>
 
-        <View className="gap-3 rounded-[28px] border p-4" style={{ borderColor, backgroundColor: surface }}>
-          <Text className="text-sm font-bold" style={{ color: appTheme.colors.foreground }}>
-            {t("categories.appearance")}
-          </Text>
-          <View className="flex-row flex-wrap gap-2">
-            {CATEGORY_COLOR_OPTIONS.map((option) => {
-              const selected = color === option;
+        <View className="gap-3">
+          <View className="flex-row items-center gap-2 px-1">
+            <AppSymbol name="paintpalette.fill" size={14} tintColor={appTheme.colors.muted} fallback={<Text style={{ color: appTheme.colors.muted }}>•</Text>} />
+            <Text className="text-xs font-semibold uppercase tracking-wide" style={{ color: appTheme.colors.muted }}>
+              {t("categories.appearance")}
+            </Text>
+          </View>
+          <View className="gap-4 rounded-[2rem] border p-4" style={{ borderColor, backgroundColor: surface }}>
+            <View className="gap-2">
+              <Text className="text-xs font-semibold uppercase tracking-wide" style={{ color: appTheme.colors.muted }}>
+                {t("categories.color")}
+              </Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} nestedScrollEnabled contentContainerClassName="gap-2 px-0.5 py-1">
+                {CATEGORY_COLOR_OPTIONS.map((option, index) => {
+                  const selected = color === option;
+                  return (
+                    <Pressable
+                      key={option}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${t("categories.color")} ${index + 1}`}
+                      accessibilityState={{ selected }}
+                      onPress={() => setColor(option)}
+                      className="h-11 w-11 items-center justify-center rounded-full"
+                      style={{ backgroundColor: option, borderColor: selected ? appTheme.colors.foreground : alpha(appTheme.colors.foreground, 0.12), borderWidth: selected ? 3 : 1 }}
+                    >
+                      {selected ? <AppSymbol name="checkmark" size={14} tintColor="#fff" fallback={<Text style={{ color: "#fff" }}>✓</Text>} /> : null}
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            </View>
+            <View className="gap-2">
+              <Text className="text-xs font-semibold uppercase tracking-wide" style={{ color: appTheme.colors.muted }}>
+                {t("categories.icon")}
+              </Text>
+              <IconSelector horizontal options={CATEGORY_ICON_OPTIONS} value={icon} tintColor={color} onChange={setIcon} />
+            </View>
+          </View>
+        </View>
+
+        <View className="gap-3">
+          <View className="flex-row items-center gap-2 px-1">
+            <AppSymbol name="chart.pie.fill" size={14} tintColor={appTheme.colors.muted} fallback={<Text style={{ color: appTheme.colors.muted }}>•</Text>} />
+            <Text className="text-xs font-semibold uppercase tracking-wide" style={{ color: appTheme.colors.muted }}>
+              {t("categories.budgetLimits")}
+            </Text>
+          </View>
+          <View className="overflow-hidden rounded-[2rem] border px-2" style={{ borderColor, backgroundColor: surface }}>
+            {BUDGET_PERIODS.map((period, index) => {
+              const value = category ? categoryBudgetValue(category, period.key) : draftBudgets[period.key];
               return (
-                <Pressable key={option} accessibilityRole="button" accessibilityState={{ selected }} onPress={() => setColor(option)} className="h-11 w-11 items-center justify-center rounded-full border" style={{ backgroundColor: option, borderColor: selected ? appTheme.colors.foreground : "transparent" }}>
-                  {selected ? <AppSymbol name="checkmark" size={14} tintColor="#fff" fallback={<Text style={{ color: "#fff" }}>✓</Text>} /> : null}
-                </Pressable>
+                <View key={period.key} style={index < BUDGET_PERIODS.length - 1 ? { borderBottomColor: borderColor, borderBottomWidth: 1 } : undefined}>
+                  <BudgetField
+                    compact
+                    key={category ? `${category.id}-${period.key}-${value ?? 0}` : `new-${period.key}`}
+                    label={t(period.labelKey)}
+                    value={value}
+                    onSave={category ? (nextValue) => updateCategoryBudget(category.id, period.key, nextValue) : undefined}
+                    onValueChange={category ? undefined : (nextValue) => setDraftBudgets((current) => ({ ...current, [period.key]: nextValue }))}
+                  />
+                </View>
               );
             })}
           </View>
-          <IconSelector options={CATEGORY_ICON_OPTIONS} value={icon} tintColor={color} onChange={setIcon} />
         </View>
-
-        {category ? (
-          <View className="gap-4 rounded-[28px] border p-4" style={{ borderColor, backgroundColor: surface }}>
-            <View>
-              <Text className="text-sm font-bold" style={{ color: appTheme.colors.foreground }}>
-                {t("categories.budgetLimits")}
-              </Text>
-              <Text className="text-xs" style={{ color: appTheme.colors.muted }}>
-                {t("categories.budgetLimitsDescription")}
-              </Text>
-            </View>
-            {BUDGET_PERIODS.map((period) => {
-              const value = categoryBudgetValue(category, period.key);
-              return <BudgetField key={`${category.id}-${period.key}-${value ?? 0}`} label={t(period.labelKey)} value={value} onSave={(nextValue) => updateCategoryBudget(category.id, period.key, nextValue)} />;
-            })}
-          </View>
-        ) : null}
 
         {category ? (
           <Pressable accessibilityRole="button" accessibilityLabel={t("categories.removeAccessibility", { name: category.name })} onPress={confirmDelete} className="min-h-12 items-center justify-center rounded-2xl border" style={{ borderColor: alpha(appTheme.colors.negative, 0.4), backgroundColor: alpha(appTheme.colors.negative, appTheme.isDark ? 0.16 : 0.08) }}>

@@ -2,9 +2,12 @@ import "../global.css";
 import "@/i18n";
 import "@/tasks/automaticEntries";
 import "@/tasks/syncBackground";
-import { Suspense, useEffect } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import * as Notifications from "expo-notifications";
 import { ThemeProvider, DefaultTheme, DarkTheme, Stack, router, type Href } from "expo-router";
+import * as QuickActions from "expo-quick-actions";
+import { useQuickActionRouting } from "expo-quick-actions/router";
 import { SQLiteProvider } from "expo-sqlite";
 import { AppThemeProvider, useAppTheme } from "@/components/AppTheme";
 import { AuthProvider } from "@/components/AuthProvider";
@@ -12,10 +15,16 @@ import { CurrencyProvider } from "@/components/CurrencyProvider";
 import { DrawerProvider } from "@/components/DrawerContext";
 import { SyncProvider } from "@/components/SyncProvider";
 import { CashflowDataProvider } from "@/data/cashflow/CashflowDataProvider";
+import { CashflowStatsWidgetSync } from "@/components/CashflowStatsWidgetSync";
+import { NotesDataProvider } from "@/data/notes/NotesDataProvider";
+import { SelfImprovementProvider } from "@/data/selfImprovement/SelfImprovementProvider";
+import { TimeMapWidgetSync } from "@/components/TimeMapWidgetSync";
 import { migrateCashflowDatabase } from "@/data/cashflow/schema";
+import { AppText as Text } from "@/components/AppText";
 import { configureForegroundNotifications, requestNotificationPermissionsAsync } from "@/lib/notifications";
 import { toDateKey } from "@/lib/date";
-import { Platform, View } from "react-native";
+import { withDbLock } from "@/lib/sync/dbLock";
+import { Platform, Pressable, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 configureForegroundNotifications();
@@ -43,7 +52,8 @@ function useNotificationNavigation() {
         router.push(data.url as Href);
       }
 
-      void Notifications.clearLastNotificationResponseAsync();
+      void Notifications.clearLastNotificationResponseAsync()
+        .catch((error) => console.warn("Failed to clear notification response", error));
     };
 
     const initialResponse = Notifications.getLastNotificationResponse();
@@ -55,8 +65,6 @@ function useNotificationNavigation() {
 }
 
 export default function RootLayout() {
-  useNotificationNavigation();
-
   useEffect(() => {
     requestNotificationPermissionsAsync().catch((error) => {
       console.warn("Failed to request notification permission on launch", error);
@@ -73,7 +81,10 @@ export default function RootLayout() {
 }
 
 function RootNavigator() {
+  const { t, i18n } = useTranslation();
   const appTheme = useAppTheme();
+  const [databaseError, setDatabaseError] = useState<Error | null>(null);
+  const [databaseKey, setDatabaseKey] = useState(0);
   const navigationTheme = appTheme.isDark ? DarkTheme : DefaultTheme;
   const themedNavigation = {
     ...navigationTheme,
@@ -93,12 +104,43 @@ function RootNavigator() {
       <ThemeProvider value={themedNavigation}>
         <AuthProvider>
           <CurrencyProvider>
-          <Suspense fallback={<View style={{ flex: 1, backgroundColor: appTheme.colors.background }} />}>
-            <SQLiteProvider databaseName="ethos-cashflow.db" onInit={migrateCashflowDatabase} useSuspense>
-              <CashflowDataProvider>
-                <SyncProvider>
-                  <DrawerProvider>
-                  <Stack
+            {databaseError ? (
+                <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 16, padding: 24 }}>
+                  <Text style={{ color: appTheme.colors.foreground, fontSize: 20, fontWeight: "600", textAlign: "center" }}>
+                    Unable to open your local data
+                  </Text>
+                  <Text style={{ color: appTheme.colors.muted, textAlign: "center" }}>
+                    Your data was not deleted. Retry after restarting the app if this continues.
+                  </Text>
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => {
+                      setDatabaseError(null);
+                      setDatabaseKey((key) => key + 1);
+                    }}
+                    style={{ backgroundColor: appTheme.colors.primary, borderRadius: 999, paddingHorizontal: 20, paddingVertical: 12 }}
+                  >
+                    <Text style={{ color: "white", fontWeight: "600" }}>Retry</Text>
+                  </Pressable>
+                </View>
+            ) : (
+              <Suspense fallback={<View style={{ flex: 1, backgroundColor: appTheme.colors.background }} />}>
+                <SQLiteProvider
+                  key={databaseKey}
+                  databaseName="ethos-cashflow.db"
+                  onInit={(db) => withDbLock(() => migrateCashflowDatabase(db))}
+                  onError={setDatabaseError}
+                  useSuspense
+                >
+                  <DatabaseReadyRouting language={i18n.resolvedLanguage} quickActionTitle={t("quickActions.newEntry")} />
+                  <CashflowDataProvider>
+                    <CashflowStatsWidgetSync />
+                    <SelfImprovementProvider>
+                      <TimeMapWidgetSync />
+                      <NotesDataProvider>
+                        <SyncProvider>
+                          <DrawerProvider>
+                        <Stack
                     screenOptions={{
                       contentStyle: { backgroundColor: appTheme.colors.background },
                       headerStyle: { backgroundColor: appTheme.colors.background },
@@ -107,6 +149,7 @@ function RootNavigator() {
                     }}
                   >
                     <Stack.Screen name="(onboarding)" options={{ headerShown: false }} />
+                    <Stack.Screen name="inbound-share" options={{ headerShown: false }} />
                     <Stack.Screen
                       name="auth"
                       options={Platform.select({
@@ -141,15 +184,36 @@ function RootNavigator() {
                         headerTransparent: true,
                       }}
                     />
-                  </Stack>
-                  </DrawerProvider>
-                </SyncProvider>
-              </CashflowDataProvider>
-            </SQLiteProvider>
-          </Suspense>
+                        </Stack>
+                          </DrawerProvider>
+                        </SyncProvider>
+                      </NotesDataProvider>
+                    </SelfImprovementProvider>
+                  </CashflowDataProvider>
+                </SQLiteProvider>
+              </Suspense>
+            )}
           </CurrencyProvider>
         </AuthProvider>
       </ThemeProvider>
     </View>
   );
+}
+
+function DatabaseReadyRouting({ language, quickActionTitle }: { language?: string; quickActionTitle: string }) {
+  useNotificationNavigation();
+  useQuickActionRouting();
+
+  useEffect(() => {
+    void QuickActions.setItems([
+      {
+        id: "new-entry",
+        title: quickActionTitle,
+        icon: Platform.OS === "ios" ? "symbol:plus.circle" : "entry",
+        params: { href: "/(cashflow)/forms/entry-form" },
+      },
+    ]).catch((error) => console.warn("Failed to register quick actions", error));
+  }, [language, quickActionTitle]);
+
+  return null;
 }

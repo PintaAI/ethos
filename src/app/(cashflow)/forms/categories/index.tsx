@@ -1,3 +1,4 @@
+import { type ReactNode } from "react";
 import { Platform, Pressable, ScrollView, View } from "react-native";
 import { router, Stack, type Href } from "expo-router";
 import { toolbarIcons } from "@/config/toolbarIcons";
@@ -19,6 +20,22 @@ const BUDGET_PERIODS = [
   { key: "monthly", labelKey: "categories.monthly" },
 ] as const satisfies readonly { key: BudgetPeriod; labelKey: string }[];
 
+function Section({ title, icon, children }: { title: string; icon: SFSymbol; children: ReactNode }) {
+  const appTheme = useAppTheme();
+
+  return (
+    <View className="gap-3">
+      <View className="flex-row items-center gap-2 px-1">
+        <AppSymbol name={icon} size={14} tintColor={appTheme.colors.muted} fallback={<Text style={{ color: appTheme.colors.muted }}>•</Text>} />
+        <Text className="text-xs font-semibold uppercase tracking-wide" style={{ color: appTheme.colors.muted }}>
+          {title}
+        </Text>
+      </View>
+      {children}
+    </View>
+  );
+}
+
 function categoryBudgetValue(category: CashflowCategory, period: BudgetPeriod) {
   if (period === "daily") return category.budgetDaily;
   if (period === "weekly") return category.budgetWeekly;
@@ -38,7 +55,7 @@ export default function CategoriesFormSheet() {
   const appTheme = useAppTheme();
   const { t } = useTranslation();
   const { format } = useCurrency();
-  const { activeManagement, categories, overallBudgets, updateOverallBudget } = useCashflowData();
+  const { categories, overallBudgets, updateOverallBudget } = useCashflowData();
   const borderColor = appTheme.isDark ? "rgba(255,255,255,0.12)" : "rgba(15,23,42,0.1)";
   const surface = appTheme.isDark ? "rgba(255,255,255,0.055)" : "rgba(15,23,42,0.035)";
   const overallBudgetByPeriod = new Map(overallBudgets.map((budget) => [budget.period, budget.nominal]));
@@ -78,36 +95,15 @@ export default function CategoriesFormSheet() {
         keyboardShouldPersistTaps="handled"
         nestedScrollEnabled={Platform.OS === "android"}
       >
-        <View className="gap-2">
-          <Text className="text-xs font-semibold uppercase tracking-[2px]" style={{ color: appTheme.colors.muted }}>
-            {activeManagement?.name ?? "Wallet"}
-          </Text>
-          <Text className="text-3xl font-black tracking-tight" style={{ color: appTheme.colors.foreground }}>
-            {t("categories.heading")}
-          </Text>
-          <Text className="text-sm leading-5" style={{ color: appTheme.colors.muted }}>
-            {t("categories.overviewDescription")}
-          </Text>
-        </View>
-
-        <View className="gap-4 rounded-3xl border p-4" style={{ borderColor, backgroundColor: surface }}>
-          <View className="flex-row items-center gap-3">
-            <View className="h-11 w-11 items-center justify-center rounded-2xl" style={{ backgroundColor: alpha(appTheme.colors.primary, 0.14) }}>
-              <AppSymbol name="chart.pie.fill" size={20} tintColor={appTheme.colors.primary} fallback={<Text style={{ color: appTheme.colors.primary }}>•</Text>} />
-            </View>
-            <View className="min-w-0 flex-1">
-              <Text className="text-base font-bold" style={{ color: appTheme.colors.foreground }}>
-                {t("categories.overallBudget")}
-              </Text>
-              <Text className="text-xs" style={{ color: appTheme.colors.muted }}>
-                {t("categories.overallBudgetDescription")}
-              </Text>
-            </View>
+        <Section title={t("categories.overallBudget")} icon="chart.pie.fill">
+          <View className="overflow-hidden rounded-[2rem] border px-2" style={{ borderColor, backgroundColor: surface }}>
+            {BUDGET_PERIODS.map((period, index) => (
+              <View key={period.key} style={index < BUDGET_PERIODS.length - 1 ? { borderBottomColor: borderColor, borderBottomWidth: 1 } : undefined}>
+                <BudgetField compact key={`overall-${period.key}-${overallBudgetByPeriod.get(period.key) ?? 0}`} label={t(period.labelKey)} value={overallBudgetByPeriod.get(period.key) ?? null} onSave={(nextValue) => updateOverallBudget(period.key, nextValue)} />
+              </View>
+            ))}
           </View>
-          {BUDGET_PERIODS.map((period) => (
-            <BudgetField key={`overall-${period.key}-${overallBudgetByPeriod.get(period.key) ?? 0}`} label={t(period.labelKey)} value={overallBudgetByPeriod.get(period.key) ?? null} onSave={(nextValue) => updateOverallBudget(period.key, nextValue)} />
-          ))}
-        </View>
+        </Section>
 
         <View className="gap-3">
           <View className="flex-row items-end justify-between px-1">

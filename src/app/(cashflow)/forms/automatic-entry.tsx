@@ -104,7 +104,7 @@ export default function AutomaticEntryFormSheet() {
   const appTheme = useAppTheme();
   const { t } = useTranslation();
   const currency = useCurrency();
-  const { activeManagement, categories, recurringEntries, createRecurringEntry, deleteRecurringEntry } = useCashflowData();
+  const { categories, recurringEntries, createRecurringEntry, deleteRecurringEntry } = useCashflowData();
   const [name, setName] = useState("");
   const [amountText, setAmountText] = useState("");
   const [ioIndex, setIoIndex] = useState(1);
@@ -191,7 +191,7 @@ export default function AutomaticEntryFormSheet() {
     <>
       <Stack.Screen
         options={{
-          title: activeManagement?.name ?? t("autoEntry.heading"),
+          title: "Auto Entry",
           unstable_sheetFooter: Platform.OS === "android"
             ? () => (
                 <AndroidFormFooter>
@@ -222,14 +222,6 @@ export default function AutomaticEntryFormSheet() {
         keyboardShouldPersistTaps="handled"
         nestedScrollEnabled={Platform.OS === "android"}
       >
-        <View className="gap-1">
-          <Text className="text-3xl font-black tracking-tight" style={{ color: appTheme.colors.foreground }}>
-            {t("autoEntry.heading")}
-          </Text>
-          <Text className="text-sm leading-5" style={{ color: appTheme.colors.muted }}>
-            {t("autoEntry.description")}
-          </Text>
-        </View>
 
         <CashflowAmountInput amountText={amountText} currencySymbol={currency.option.symbol} onAmountTextChange={setAmountText} />
         <QuickAmountStrip hidden denominations={currency.denominations} onAmount={addQuickAmount} />

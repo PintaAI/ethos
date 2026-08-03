@@ -50,6 +50,22 @@ function MonthCalendar({
   const days = useMemo(() => getCalendarDays(currentMonth), [currentMonth]);
   const today = useMemo(() => new Date(), []);
   const monthLabel = currentMonth.toLocaleDateString("id-ID", { month: "long", year: "numeric" });
+  const monthSummary = useMemo(() => {
+    const year = currentMonth.getFullYear();
+    const month = currentMonth.getMonth();
+    const dayCount = new Date(year, month + 1, 0).getDate();
+    let income = 0;
+    let expenses = 0;
+
+    for (let day = 1; day <= dayCount; day += 1) {
+      const dayData = calendarData[toDateKey(new Date(year, month, day))];
+      if (!dayData) continue;
+      income += dayData.income;
+      expenses += dayData.expenses;
+    }
+
+    return { income, expenses, net: income - expenses };
+  }, [calendarData, currentMonth]);
   const weekdays = useMemo(() => {
     const base = new Date(2024, 0, 7);
     return Array.from({ length: 7 }, (_, i) => {
@@ -168,15 +184,32 @@ function MonthCalendar({
           })}
         </View>
       ))}
+
+      <View className="mt-1 flex-row flex-wrap justify-center gap-x-3 gap-y-1 px-1">
+        {[
+          { label: "Income", icon: "arrow.down.circle.fill" as const, value: monthSummary.income, color: positive },
+          { label: "Expenses", icon: "arrow.up.circle.fill" as const, value: monthSummary.expenses, color: negative },
+          { label: "Net", icon: "equal.circle.fill" as const, value: monthSummary.net, color: appTheme.colors.foreground },
+        ].map((item) => (
+          <View
+            key={item.label}
+            accessible
+            accessibilityLabel={`${item.label}: ${format(item.value)}`}
+            className="flex-row items-center gap-1"
+          >
+            <CalSymbol name={item.icon} color={item.color} size={13} />
+            <RNText className="text-xs font-bold" style={{ color: item.color }}>
+              {format(item.value, { compact: true })}
+            </RNText>
+          </View>
+        ))}
+      </View>
     </View>
   );
 }
 
 export function CashflowCalendar({ entries }: CashflowCalendarProps) {
-  const appTheme = useAppTheme();
   const { format } = useCurrency();
-  const positive = appTheme.colors.positive;
-  const negative = appTheme.colors.negative;
   const [selectedDay, setSelectedDay] = useState<Date | undefined>(new Date());
   const [currentMonth, setCurrentMonth] = useState(() => {
     const now = new Date();
@@ -194,44 +227,11 @@ export function CashflowCalendar({ entries }: CashflowCalendarProps) {
     return data;
   }, [entries]);
 
-  const monthlyTotals = useMemo(() => {
-    let income = 0;
-    let expenses = 0;
-    const prefix = `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, "0")}`;
-    for (const [dateKey, data] of Object.entries(calendarData)) {
-      if (!dateKey.startsWith(prefix)) continue;
-      income += data.income;
-      expenses += data.expenses;
-    }
-    return { income, expenses, net: income - expenses };
-  }, [calendarData, currentMonth]);
-
   const selectedDayKey = selectedDay ? toDateKey(selectedDay) : null;
   const selectedDayData = selectedDayKey ? calendarData[selectedDayKey] : null;
   const selectedEntries = useMemo(() => selectedDayData?.entries ?? [], [selectedDayData]);
   return (
     <View className="gap-4">
-      <View className="flex-row flex-wrap items-center gap-x-3 gap-y-1">
-        <RNText className="text-xs" style={{ color: appTheme.colors.muted }}>
-          <RNText style={{ color: appTheme.colors.muted }}>Net: </RNText>
-          <RNText className="font-medium" style={{ color: appTheme.colors.foreground }}>
-            {format(monthlyTotals.net, { compact: true })}
-          </RNText>
-        </RNText>
-        <RNText className="text-xs" style={{ color: appTheme.colors.muted }}>
-          <RNText style={{ color: appTheme.colors.muted }}>Income: </RNText>
-          <RNText className="font-medium" style={{ color: positive }}>
-            +{format(monthlyTotals.income, { compact: true })}
-          </RNText>
-        </RNText>
-        <RNText className="text-xs" style={{ color: appTheme.colors.muted }}>
-          <RNText style={{ color: appTheme.colors.muted }}>Expenses: </RNText>
-          <RNText className="font-medium" style={{ color: negative }}>
-            -{format(monthlyTotals.expenses, { compact: true })}
-          </RNText>
-        </RNText>
-      </View>
-
       <MonthCalendar
         currentMonth={currentMonth}
         selectedDay={selectedDay}

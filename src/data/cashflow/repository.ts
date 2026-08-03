@@ -23,6 +23,8 @@ import type {
   RecurringFrequency,
   UpdateManagementInput,
 } from "./types";
+import type { CategoryHistoryItem } from "./categorySuggestions";
+import { takeDueRecurringDates } from "./recurringMaterialization";
 
 type ManagementRow = {
   id: string;
@@ -108,6 +110,8 @@ export type MaterializedRecurringEntry = {
   date: string;
 };
 
+export const RECURRING_MATERIALIZATION_LIMIT = 50;
+
 const EMPTY_STATS: CashflowStats = {
   totalIncome: 0,
   totalExpenses: 0,
@@ -185,19 +189,6 @@ function mapRecurringEntry(row: RecurringEntryRow): CashflowRecurringEntry {
     frequency: row.frequency,
     nextDate: row.next_date,
   };
-}
-
-function nextRecurringDate(dateKey: string, frequency: RecurringFrequency) {
-  if (frequency === "daily") return addDaysToKey(dateKey, 1);
-  if (frequency === "weekly") return addDaysToKey(dateKey, 7);
-
-  const date = parseDateKey(dateKey);
-  date.setMonth(date.getMonth() + 1);
-  return toDateKey(date);
-}
-
-function addDaysToKey(dateKey: string, days: number) {
-  return toDateKey(addDays(parseDateKey(dateKey), days));
 }
 
 export async function getActiveManagementId(db: SQLiteDatabase) {
@@ -330,7 +321,16 @@ export async function listRecurringEntries(db: SQLiteDatabase, managementId: str
   return rows.map(mapRecurringEntry);
 }
 
-async function materializeDueRecurringEntriesWithWriter(db: RecurringEntryWriter, managementId: string) {
+type MaterializeRecurringOptions = {
+  limit?: number;
+  shouldCancel?: () => boolean;
+};
+
+async function materializeDueRecurringEntriesWithWriter(
+  db: RecurringEntryWriter,
+  managementId: string,
+  options: MaterializeRecurringOptions = {},
+) {
   const today = toDateKey(new Date());
   const rows = await db.getAllAsync<RecurringEntryRow>(
     `SELECT id, name, nominal, category_id, management_id, io, frequency, next_date
@@ -341,12 +341,14 @@ async function materializeDueRecurringEntriesWithWriter(db: RecurringEntryWriter
     today,
   );
   const materialized: MaterializedRecurringEntry[] = [];
+  const limit = Math.max(0, options.limit ?? RECURRING_MATERIALIZATION_LIMIT);
 
   for (const row of rows) {
-    let entryDate = row.next_date;
-    let nextDate = row.next_date;
+    if (materialized.length >= limit || options.shouldCancel?.()) break;
+    const batch = takeDueRecurringDates(row.next_date, row.frequency, today, limit - materialized.length);
 
-    while (entryDate <= today) {
+    for (const entryDate of batch.dates) {
+      if (options.shouldCancel?.()) throw new Error("Recurring entry materialization expired");
       await createEntry(db, managementId, {
         name: row.name,
         nominal: row.nominal,
@@ -360,8 +362,6 @@ async function materializeDueRecurringEntriesWithWriter(db: RecurringEntryWriter
         name: row.name,
         date: entryDate,
       });
-      nextDate = nextRecurringDate(entryDate, row.frequency);
-      entryDate = nextDate;
     }
 
     await db.runAsync(
@@ -370,7 +370,7 @@ async function materializeDueRecurringEntriesWithWriter(db: RecurringEntryWriter
          updated_at = ?,
          sync_status = CASE WHEN sync_status = 'pending' THEN 'pending' ELSE 'updated' END
        WHERE id = ? AND management_id = ? AND deleted_at IS NULL`,
-      nextDate,
+      batch.nextDate,
       nowIso(),
       row.id,
       managementId,
@@ -392,14 +392,34 @@ export async function materializeDueRecurringEntries(db: SQLiteDatabase, managem
   return materialized;
 }
 
-export async function materializeAllDueRecurringEntries(db: SQLiteDatabase) {
+export async function materializeAllDueRecurringEntries(
+  db: SQLiteDatabase,
+  options: MaterializeRecurringOptions = {},
+) {
   const managements = await db.getAllAsync<{ id: string }>(
     "SELECT id FROM managements WHERE deleted_at IS NULL",
   );
   const materialized: MaterializedRecurringEntry[] = [];
+  const limit = Math.max(0, options.limit ?? RECURRING_MATERIALIZATION_LIMIT);
 
   for (const management of managements) {
-    materialized.push(...await materializeDueRecurringEntries(db, management.id));
+    const remaining = Math.max(0, limit - materialized.length);
+    if (remaining === 0 || options.shouldCancel?.()) break;
+    if (Platform.OS === "web") {
+      materialized.push(...await materializeDueRecurringEntriesWithWriter(db, management.id, {
+        ...options,
+        limit: remaining,
+      }));
+    } else {
+      let batch: MaterializedRecurringEntry[] = [];
+      await db.withExclusiveTransactionAsync(async (transaction) => {
+        batch = await materializeDueRecurringEntriesWithWriter(transaction, management.id, {
+          ...options,
+          limit: remaining,
+        });
+      });
+      materialized.push(...batch);
+    }
   }
 
   return materialized;
@@ -490,6 +510,42 @@ export async function listEntries(db: SQLiteDatabase, managementId: string): Pro
   );
 
   return rows.map(mapEntry);
+}
+
+export async function listCategoryHistory(
+  db: SQLiteDatabase,
+  managementId: string,
+  io: "Income" | "Expenses",
+  authenticatedUserId?: string,
+): Promise<CategoryHistoryItem[]> {
+  const localUser = authenticatedUserId
+    ? await db.getFirstAsync<{ id: string }>(
+        "SELECT id FROM users WHERE (id = ? OR remote_id = ?) AND deleted_at IS NULL LIMIT 1",
+        authenticatedUserId,
+        authenticatedUserId,
+      )
+    : null;
+  const rows = await db.getAllAsync<{
+    category_id: string;
+    name: string;
+    date: string;
+    created_at: string;
+    created_by_id: string | null;
+  }>(
+    `SELECT category_id, name, date, created_at, created_by_id
+     FROM entries
+     WHERE management_id = ? AND io = ? AND category_id IS NOT NULL AND deleted_at IS NULL`,
+    managementId,
+    io,
+  );
+
+  return rows.map((row) => ({
+    categoryId: row.category_id,
+    name: row.name,
+    date: row.date,
+    createdAt: row.created_at,
+    personalWeight: localUser ? (row.created_by_id === localUser.id ? 1 : 0.25) : 1,
+  }));
 }
 
 export async function createManagement(db: SQLiteDatabase, input: CreateManagementInput) {
@@ -604,9 +660,10 @@ export async function setManagementImage(db: SQLiteDatabase, managementId: strin
 
 export async function createCategory(db: SQLiteDatabase, managementId: string, input: CreateCategoryInput) {
   const trimmedName = input.name.trim();
-  if (!trimmedName) return;
+  if (!trimmedName) return null;
 
   const createdAt = nowIso();
+  const categoryId = createId("category");
 
   await db.runAsync(
     `INSERT INTO categories (id, name, color, icon, management_id, created_at, updated_at, sync_status)
@@ -617,7 +674,7 @@ export async function createCategory(db: SQLiteDatabase, managementId: string, i
        updated_at = excluded.updated_at,
        deleted_at = NULL,
        sync_status = CASE WHEN categories.sync_status = 'pending' THEN 'pending' ELSE 'updated' END`,
-    createId("category"),
+    categoryId,
     trimmedName,
     input.color,
     input.icon,
@@ -625,6 +682,13 @@ export async function createCategory(db: SQLiteDatabase, managementId: string, i
     createdAt,
     createdAt,
   );
+
+  const category = await db.getFirstAsync<{ id: string }>(
+    "SELECT id FROM categories WHERE management_id = ? AND name = ? AND deleted_at IS NULL",
+    managementId,
+    trimmedName,
+  );
+  return category?.id ?? null;
 }
 
 export async function updateCategory(db: SQLiteDatabase, managementId: string, categoryId: string, input: CreateCategoryInput) {

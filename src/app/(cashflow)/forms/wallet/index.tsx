@@ -31,6 +31,7 @@ export default function WalletFormSheet() {
 
   const handleSelectManagement = async (management: (typeof managements)[number]) => {
     try {
+      router.back();
       await setActiveManagementId(management.id);
 
       const managementImage = management.image;

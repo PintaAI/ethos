@@ -2,19 +2,24 @@
   "expo": {
     "name": "ethos",
     "slug": "ethos",
-    "version": "1.0.1",
+    "version": "1.1.4",
     "orientation": "portrait",
     "icon": "./assets/images/ios-icon-default.png",
     "scheme": "ethos",
     "userInterfaceStyle": "automatic",
     "ios": {
+      "usesAppleSignIn": true,
       "icon": {
         "light": "./assets/images/ios-icon-default.png",
         "dark": "./assets/images/ios-icon-dark.png"
       },
       "bundleIdentifier": "com.rorez.ethos",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIBackgroundModes": [
+          "fetch",
+          "processing"
+        ]
       },
       "privacyManifests": {
         "NSPrivacyTracking": false,
@@ -63,6 +68,7 @@
     },
     "plugins": [
       "expo-router",
+      "expo-apple-authentication",
       [
         "expo-splash-screen",
         {
@@ -103,7 +109,6 @@
           "barcodeScannerEnabled": true
         }
       ],
-      "expo-audio",
       "expo-localization",
       "expo-asset",
       [
@@ -113,7 +118,70 @@
           "defaultChannel": "default"
         }
       ],
-      "expo-background-task"
+      "expo-background-task",
+      [
+        "expo-quick-actions",
+        {
+          "androidIcons": {
+            "entry": {
+              "foregroundImage": "./assets/images/android-icon-foreground.png",
+              "backgroundColor": "#208AEF"
+            }
+          }
+        }
+      ],
+      "expo-web-browser",
+      [
+        "expo-widgets",
+        {
+          "bundleIdentifier": "com.rorez.ethos.widgets",
+          "groupIdentifier": "group.com.rorez.ethos",
+          "enablePushNotifications": false,
+          "widgets": [
+            {
+              "name": "EthosCashflowStatsWidget",
+              "displayName": "Cashflow Stats",
+              "description": "See your active wallet's balance, income, and expenses.",
+              "ios": {
+                "supportedFamilies": [
+                  "systemMedium"
+                ]
+              }
+            },
+            {
+              "name": "EthosTimeMapWidget",
+              "displayName": "Time Map",
+              "description": "See today's schedule as a 24-hour time map.",
+              "ios": {
+                "contentMarginsDisabled": true,
+                "supportedFamilies": [
+                  "systemLarge"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "./plugins/withNativeWidgets",
+      [
+        "expo-sharing",
+        {
+          "ios": {
+            "enabled": true,
+            "activationRule": {
+              "supportsImageWithMaxCount": 1,
+              "supportsText": true
+            }
+          },
+          "android": {
+            "enabled": true,
+            "singleShareMimeTypes": [
+              "image/*",
+              "text/plain"
+            ]
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

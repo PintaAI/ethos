@@ -1,5 +1,5 @@
-import { useDeferredValue, useRef, useState, type ReactElement } from "react";
-import { Alert, Animated, FlatList, Modal, Pressable, ScrollView, TextInput, View, type RefreshControlProps } from "react-native";
+import { useDeferredValue, useEffect, useRef, useState, type ReactElement } from "react";
+import { ActivityIndicator, Alert, Animated, FlatList, Modal, Pressable, ScrollView, TextInput, View, type RefreshControlProps } from "react-native";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
 import { type SFSymbol } from "expo-symbols";
@@ -197,7 +197,7 @@ function CashflowTableRow({ item, isSelecting, selected, toggleRow, onMove, onDe
 }) {
   const { t } = useTranslation();
   const appTheme = useAppTheme();
-  const { currency, format } = useCurrency();
+  const { compactAmountsEnabled, currency, format } = useCurrency();
   const isIncome = item.io === "Income";
   const amountColor = isIncome ? appTheme.colors.positive : appTheme.colors.negative;
   const typeLabel = isIncome ? t('cashflow.incomeLabel') : t('cashflow.expenseLabel');
@@ -304,7 +304,7 @@ function CashflowTableRow({ item, isSelecting, selected, toggleRow, onMove, onDe
           </View>
           <View className="items-end gap-1.5">
             <RNText numberOfLines={1} className="text-right text-base font-bold" style={{ color: amountColor }}>
-              {isIncome ? "+" : "-"}{formatEntryAmount(item, currency, format, { compact: true })}
+              {isIncome ? "+" : "-"}{formatEntryAmount(item, currency, format, { compact: compactAmountsEnabled })}
             </RNText>
             <View className="flex-row items-center gap-1">
               <View className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: amountColor }} />
@@ -335,6 +335,8 @@ export function CashflowTable({ entries, dateFilter, onDateFilterChange, hideTan
   const [isMoving, setIsMoving] = useState(false);
   const [showMovePicker, setShowMovePicker] = useState(false);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const loadMoreTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const openSwipeableRef = useRef<SwipeableMethods | null>(null);
   const positive = appTheme.colors.positive;
   const negative = appTheme.colors.negative;
@@ -369,6 +371,21 @@ export function CashflowTable({ entries, dateFilter, onDateFilterChange, hideTan
   const allVisibleSelected = visibleEntries.length > 0 && visibleEntries.every((entry) => rowSelection[entry.id]);
   const isSelecting = selectedCount > 0;
   const destinationWallets = managements.filter((management) => management.id !== activeManagementId);
+
+  useEffect(() => () => {
+    if (loadMoreTimerRef.current) clearTimeout(loadMoreTimerRef.current);
+  }, []);
+
+  function handleLoadMore() {
+    if (!hasMore || loadMoreTimerRef.current) return;
+
+    setIsLoadingMore(true);
+    loadMoreTimerRef.current = setTimeout(() => {
+      setVisibleCount((count) => Math.min(count + PAGE_SIZE, filteredEntries.length));
+      setIsLoadingMore(false);
+      loadMoreTimerRef.current = null;
+    }, 150);
+  }
 
   function handleSort(field: SortField) {
     if (sortField === field) {
@@ -580,13 +597,11 @@ export function CashflowTable({ entries, dateFilter, onDateFilterChange, hideTan
 
   const footerContent = (
     <View className="items-center justify-center py-4">
-      {hasMore ? (
-        <Pressable onPress={() => setVisibleCount((count) => count + PAGE_SIZE)} className="rounded-full px-4 py-2" style={{ backgroundColor: mutedSurface }}>
-          <RNText className="text-sm font-semibold" style={{ color: appTheme.colors.foreground }}>{t('cashflow.loadMore')}</RNText>
-        </Pressable>
-      ) : (
+      {isLoadingMore ? (
+        <ActivityIndicator color={appTheme.colors.primary} accessibilityLabel={t('cashflow.loadMore')} />
+      ) : !hasMore ? (
         <RNText className="text-sm" style={{ color: appTheme.colors.muted }}>{t('cashflow.showing', { count: filteredEntries.length })}</RNText>
-      )}
+      ) : null}
       {injectedFooter}
     </View>
   );
@@ -638,6 +653,8 @@ export function CashflowTable({ entries, dateFilter, onDateFilterChange, hideTan
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
         refreshControl={refreshControl}
+        onEndReached={handleLoadMore}
+        onEndReachedThreshold={0.35}
         style={{ flex: 1, overflow: "visible" }}
       />
       <Modal transparent animationType="fade" visible={showMovePicker} onRequestClose={() => !isMoving && setShowMovePicker(false)}>

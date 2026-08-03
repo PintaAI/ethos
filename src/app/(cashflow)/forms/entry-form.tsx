@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, type ReactNode } from "react";
+import { useState, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { Alert, Modal, Platform, Pressable, ScrollView, TextInput as RNTextInput, View, useWindowDimensions } from "react-native";
 import { router, Stack, useLocalSearchParams, type Href } from "expo-router";
 import { toolbarIcons } from "@/config/toolbarIcons";
@@ -18,6 +18,11 @@ import { loadCategorySliderFeedback, playCategorySliderFeedback } from "@/compon
 import { useCashflowCategorySlider } from "@/components/cashflow/useCashflowCategorySlider";
 import { useCurrency } from "@/components/CurrencyProvider";
 import { useCashflowData } from "@/data/cashflow/CashflowDataProvider";
+import { rankCategories, suggestCategoryFromNote, type CategoryHistoryItem } from "@/data/cashflow/categorySuggestions";
+import { listCategoryHistory } from "@/data/cashflow/repository";
+import { withDbLock } from "@/lib/sync/dbLock";
+import { useAuth } from "@/components/AuthProvider";
+import { useSQLiteContext } from "expo-sqlite";
 import { alpha } from "@/lib/color";
 import { toDateKey, parseDateKey } from "@/lib/date";
 
@@ -114,9 +119,19 @@ export default function EntryForm() {
   const { t } = useTranslation();
   const appTheme = useAppTheme();
   const currency = useCurrency();
-  const { id, date } = useLocalSearchParams<{ id?: string; date?: string }>();
+  const db = useSQLiteContext();
+  const { user } = useAuth();
+  const { id, date, sharedDraft, draftName, draftAmount, draftCategory, draftIo } = useLocalSearchParams<{
+    id?: string;
+    date?: string;
+    sharedDraft?: string;
+    draftName?: string;
+    draftAmount?: string;
+    draftCategory?: string;
+    draftIo?: "Income" | "Expenses";
+  }>();
   const isEditing = !!id;
-  const { categories, quickFills, entries, createEntry, updateEntry } = useCashflowData();
+  const { activeManagementId, categories, quickFills, entries, createEntry, updateEntry } = useCashflowData();
   const editingEntry = useMemo(
     () => (id ? entries.find((e) => e.id === id) ?? null : null),
     [id, entries],
@@ -140,7 +155,26 @@ export default function EntryForm() {
   const [initialAmountText, setInitialAmountText] = useState("");
   const [noteText, setNoteText] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [categoryHistoryScope, setCategoryHistoryScope] = useState<{
+    key: string;
+    history: CategoryHistoryItem[];
+  } | null>(null);
+  const [suggestedFromHistory, setSuggestedFromHistory] = useState(false);
+  const automaticOverrideBlockedRef = useRef(isEditing || Boolean(sharedDraft && draftCategory));
+  const appliedShareDraftRef = useRef<string | null>(null);
+  const appliedShareCategoryRef = useRef<string | null>(null);
   const { width: screenWidth } = useWindowDimensions();
+  const io = ioIndex === 0 ? "Income" : "Expenses";
+  const categoryHistoryKey = activeManagementId ? `${activeManagementId}\u0000${io}` : null;
+  const categoryHistory = categoryHistoryScope?.key === categoryHistoryKey
+    ? categoryHistoryScope.history
+    : null;
+  const rankedCategories = useMemo(
+    () => categoryHistory
+      ? rankCategories(categories, categoryHistory, toDateKey(new Date()))
+      : categories,
+    [categories, categoryHistory],
+  );
   const {
     categoryIndex,
     categoryOptions,
@@ -151,11 +185,43 @@ export default function EntryForm() {
     selectedCategory,
     sliderRef,
   } = useCashflowCategorySlider({
-    categories,
+    categories: rankedCategories,
     primaryColor: appTheme.colors.primary,
     preferenceKey: "cashflowCategoryIndex",
-    restoreEnabled: !isEditing,
+    restoreEnabled: false,
+    initialIndex: 0,
   });
+
+  useEffect(() => {
+    if (!activeManagementId || !categoryHistoryKey) return;
+    let cancelled = false;
+    withDbLock(() => listCategoryHistory(db, activeManagementId, io, user?.id)).then((history) => {
+      if (!cancelled) setCategoryHistoryScope({ key: categoryHistoryKey, history });
+    }).catch((error) => console.error("Failed to load category history", error));
+    return () => { cancelled = true; };
+  }, [activeManagementId, categoryHistoryKey, db, io, user?.id]);
+
+  useEffect(() => {
+    if (isEditing || automaticOverrideBlockedRef.current || categoryOptions.length === 0) return;
+    const frame = requestAnimationFrame(() => restoreCategoryIndex(0, false));
+    return () => cancelAnimationFrame(frame);
+  }, [categoryOptions, isEditing, restoreCategoryIndex]);
+
+  useEffect(() => {
+    if (isEditing || automaticOverrideBlockedRef.current || !noteText.trim() || !categoryHistory) {
+      return;
+    }
+    const timeout = setTimeout(() => {
+      const categoryId = suggestCategoryFromNote(noteText, categoryHistory, toDateKey(new Date()));
+      if (!categoryId || automaticOverrideBlockedRef.current) return;
+      const index = categoryOptions.findIndex((category) => category.id === categoryId);
+      if (index >= 0 && categoryOptions[index]?.id !== selectedCategory?.id) {
+        selectCategoryIndex(index);
+        setSuggestedFromHistory(true);
+      }
+    }, 350);
+    return () => clearTimeout(timeout);
+  }, [categoryHistory, categoryOptions, isEditing, noteText, selectCategoryIndex, selectedCategory?.id]);
 
   useEffect(() => {
     loadCategorySliderFeedback();
@@ -231,6 +297,35 @@ export default function EntryForm() {
     };
   }, [date, isEditing]);
 
+  useEffect(() => {
+    if (isEditing || !sharedDraft || appliedShareDraftRef.current === sharedDraft) return;
+    appliedShareDraftRef.current = sharedDraft;
+
+    queueMicrotask(() => {
+      if (draftName) setNoteText(draftName);
+      if (draftAmount && Number(draftAmount) > 0) setAmountText(String(Math.round(Number(draftAmount))));
+      if (draftIo) setIoIndex(draftIo === "Income" ? 0 : 1);
+    });
+  }, [draftAmount, draftIo, draftName, isEditing, sharedDraft]);
+
+  useEffect(() => {
+    if (
+      isEditing ||
+      !sharedDraft ||
+      !draftCategory ||
+      categoryOptions.length === 0 ||
+      appliedShareCategoryRef.current === sharedDraft
+    ) return;
+
+    const normalizedCategory = draftCategory.trim().toLowerCase();
+    const index = categoryOptions.findIndex(
+      (category) => category.name.trim().toLowerCase() === normalizedCategory,
+    );
+    appliedShareCategoryRef.current = sharedDraft;
+    if (index >= 0) requestAnimationFrame(() => restoreCategoryIndex(index, false));
+    if (index >= 0) automaticOverrideBlockedRef.current = true;
+  }, [categoryOptions, draftCategory, isEditing, restoreCategoryIndex, sharedDraft]);
+
   const addQuickAmount = (value: number) => {
     setAmountText((prev) => String((parseInt(prev, 10) || 0) + value));
   };
@@ -272,6 +367,8 @@ export default function EntryForm() {
     setAmountText("");
     setInitialAmountText("");
     setNoteText("");
+    automaticOverrideBlockedRef.current = false;
+    setSuggestedFromHistory(false);
     resetCategoryIndex(true);
   };
 
@@ -356,7 +453,11 @@ export default function EntryForm() {
               <AppSegmentedControl
                 values={[t("entry.income"), t("entry.expense")]}
                 selectedIndex={ioIndex}
-                onIndexChange={setIoIndex}
+                onIndexChange={(index) => {
+                  setIoIndex(index);
+                  automaticOverrideBlockedRef.current = false;
+                  setSuggestedFromHistory(false);
+                }}
                 style={{ width: 180 }}
               />
             </Stack.Toolbar.View>
@@ -366,42 +467,6 @@ export default function EntryForm() {
             <Stack.Toolbar.Button icon={toolbarIcons.check} onPress={handleSave} variant="done">
               {t("entry.save")}
             </Stack.Toolbar.Button>
-          </Stack.Toolbar>
-          <Stack.Toolbar placement="bottom">
-            <Stack.Toolbar.View hidesSharedBackground>
-              <GlassBox
-                isInteractive
-                tintColor={alpha(appTheme.colors.primary, appTheme.isDark ? 0.35 : 0.18)}
-                glassEffectStyle="clear"
-                style={{
-                  borderRadius: 9999,
-                  height: 40,
-                  width: Math.max(220, screenWidth - 32),
-                }}
-              >
-                {noteText.length === 0 ? (
-                  <View pointerEvents="none" className="absolute inset-0 justify-center px-3.5">
-                    <Text className="text-base" style={{ color: appTheme.colors.muted }}>
-                      {t("entry.placeholder.spendingToday")}
-                    </Text>
-                  </View>
-                ) : null}
-                <RNTextInput
-                  value={noteText}
-                  onChangeText={setNoteText}
-                  selectionColor={appTheme.colors.primary}
-                  style={{
-                    color: appTheme.colors.foreground,
-                    fontSize: 16,
-                    height: 40,
-                    includeFontPadding: false,
-                    paddingHorizontal: 14,
-                    paddingVertical: 0,
-                    textAlignVertical: "center",
-                  }}
-                />
-              </GlassBox>
-            </Stack.Toolbar.View>
           </Stack.Toolbar>
         </>
       ) : null}
@@ -417,12 +482,19 @@ export default function EntryForm() {
             <AppSegmentedControl
               values={[t("entry.income"), t("entry.expense")]}
               selectedIndex={ioIndex}
-              onIndexChange={setIoIndex}
+              onIndexChange={(index) => {
+                setIoIndex(index);
+                automaticOverrideBlockedRef.current = false;
+                setSuggestedFromHistory(false);
+              }}
               style={{ width: "100%" }}
             />
             <RNTextInput
               value={noteText}
-              onChangeText={setNoteText}
+              onChangeText={(value) => {
+                setNoteText(value);
+                setSuggestedFromHistory(false);
+              }}
               placeholder={t("entry.placeholder.spendingToday")}
               placeholderTextColor={appTheme.colors.muted}
               selectionColor={appTheme.colors.primary}
@@ -440,10 +512,42 @@ export default function EntryForm() {
           <View className="h-28 w-full items-center justify-center">
             <CashflowAmountInput amountText={amountText} currencySymbol={currency.option.symbol} onAmountTextChange={setAmountText} />
           </View>
-          {noteText.trim() ? (
-            <Text className="text-base font-medium" style={{ color: appTheme.colors.muted }}>
-              {noteText.trim()}
-            </Text>
+          {Platform.OS === "ios" ? (
+            <GlassBox
+              isInteractive
+              tintColor={alpha(appTheme.colors.primary, appTheme.isDark ? 0.35 : 0.18)}
+              glassEffectStyle="clear"
+              style={{
+                borderRadius: 9999,
+                height: 40,
+                width: Math.max(220, screenWidth - 32),
+              }}
+            >
+              {noteText.length === 0 ? (
+                <View pointerEvents="none" className="absolute inset-0 justify-center px-3.5">
+                  <Text className="text-base" style={{ color: appTheme.colors.muted }}>
+                    {t("entry.placeholder.spendingToday")}
+                  </Text>
+                </View>
+              ) : null}
+              <RNTextInput
+                value={noteText}
+                onChangeText={(value) => {
+                  setNoteText(value);
+                  setSuggestedFromHistory(false);
+                }}
+                selectionColor={appTheme.colors.primary}
+                style={{
+                  color: appTheme.colors.foreground,
+                  fontSize: 16,
+                  height: 40,
+                  includeFontPadding: false,
+                  paddingHorizontal: 14,
+                  paddingVertical: 0,
+                  textAlignVertical: "center",
+                }}
+              />
+            </GlassBox>
           ) : null}
         </View>
 
@@ -459,7 +563,11 @@ export default function EntryForm() {
                     if (quickFill.amount) setAmountText(String(Math.round(currency.toDisplay(quickFill.amount))));
                     setNoteText(quickFill.label);
                     const nextCategoryIndex = categoryOptions.findIndex((category) => category.id === quickFill.categoryId);
-                    if (nextCategoryIndex >= 0) selectCategoryIndex(nextCategoryIndex);
+                    if (nextCategoryIndex >= 0) {
+                      automaticOverrideBlockedRef.current = true;
+                      setSuggestedFromHistory(false);
+                      selectCategoryIndex(nextCategoryIndex);
+                    }
                   }}
                 />
               ))}
@@ -473,10 +581,19 @@ export default function EntryForm() {
               categories={categoryOptions}
               selectedIndex={categoryIndex}
               onChangeIndex={handleCategoryChange}
+              onUserInteraction={() => {
+                automaticOverrideBlockedRef.current = true;
+                setSuggestedFromHistory(false);
+              }}
               showAddButton
-              onAddPress={() => router.push("/forms/categories" as Href)}
+              onAddPress={() => router.push("/forms/categories/detail" as Href)}
               onFeedback={() => playCategorySliderFeedback("selection")}
             />
+            {suggestedFromHistory ? (
+              <Text className="pt-1 text-center text-xs" style={{ color: appTheme.colors.muted }}>
+                {t("entry.suggestedFromHistory")}
+              </Text>
+            ) : null}
           </View>
         </Section>
 

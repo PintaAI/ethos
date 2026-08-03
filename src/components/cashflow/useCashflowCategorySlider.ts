@@ -22,11 +22,13 @@ export function useCashflowCategorySlider({
   primaryColor,
   preferenceKey,
   restoreEnabled = true,
+  initialIndex = undefined,
 }: {
   categories: SourceCategory[];
   primaryColor: string;
   preferenceKey: Extract<keyof Preferences, "cashflowCategoryIndex" | "cashflowQuickFillCategoryIndex">;
   restoreEnabled?: boolean;
+  initialIndex?: number;
 }) {
   const sliderRef = useRef<CategorySliderHandle>(null);
   const fallbackCategories = useMemo(() => {
@@ -52,7 +54,7 @@ export function useCashflowCategorySlider({
       : fallbackCategories,
     [categories, fallbackCategories, primaryColor],
   );
-  const initialCategoryIndex = Math.floor((categoryOptions.length - 1) / 2);
+  const initialCategoryIndex = initialIndex ?? Math.floor((categoryOptions.length - 1) / 2);
   const [categoryIndex, setCategoryIndex] = useState(initialCategoryIndex);
 
   const setCategoryIndexAndScroll = useCallback((index: number, { animated = true, persist = false }: SelectOptions = {}) => {
@@ -60,16 +62,16 @@ export function useCashflowCategorySlider({
 
     const nextIndex = Math.min(Math.max(index, 0), categoryOptions.length - 1);
     setCategoryIndex(nextIndex);
-    if (persist) setPreference(preferenceKey, nextIndex).catch(() => {});
+    if (persist) setPreference(preferenceKey, categoryOptions[nextIndex]?.id ?? null).catch(() => {});
     sliderRef.current?.scrollToIndex(nextIndex, animated);
-  }, [categoryOptions.length, preferenceKey]);
+  }, [categoryOptions, preferenceKey]);
 
   const handleCategoryChange = useCallback((index: number) => {
     if (index < 0 || index >= categoryOptions.length) return;
 
     setCategoryIndex(index);
-    setPreference(preferenceKey, index).catch(() => {});
-  }, [categoryOptions.length, preferenceKey]);
+    setPreference(preferenceKey, categoryOptions[index]?.id ?? null).catch(() => {});
+  }, [categoryOptions, preferenceKey]);
 
   const selectCategoryIndex = useCallback((index: number, animated = true) => {
     setCategoryIndexAndScroll(index, { animated, persist: true });
@@ -89,23 +91,27 @@ export function useCashflowCategorySlider({
     let cancelled = false;
     let frame: ReturnType<typeof requestAnimationFrame> | null = null;
 
-    getPreference(preferenceKey).then((savedIndex) => {
+    getPreference(preferenceKey).then((savedCategoryId) => {
       if (cancelled) return;
 
-      const nextIndex = savedIndex === null
-        ? initialCategoryIndex
-        : Math.min(Math.max(savedIndex, 0), categoryOptions.length - 1);
+      const savedIndex = typeof savedCategoryId === "string"
+        ? categoryOptions.findIndex((category) => category.id === savedCategoryId)
+        : typeof savedCategoryId === "number" ? savedCategoryId : -1;
+      const nextIndex = savedIndex < 0 ? initialCategoryIndex : Math.min(savedIndex, categoryOptions.length - 1);
+      if (typeof savedCategoryId === "number") {
+        setPreference(preferenceKey, categoryOptions[nextIndex]?.id ?? null).catch(() => {});
+      }
 
       frame = requestAnimationFrame(() => {
         if (!cancelled) restoreCategoryIndex(nextIndex, false);
       });
-    });
+    }).catch((error) => console.warn("Failed to restore category selection", error));
 
     return () => {
       cancelled = true;
       if (frame !== null) cancelAnimationFrame(frame);
     };
-  }, [categoryOptions.length, initialCategoryIndex, preferenceKey, restoreCategoryIndex, restoreEnabled]);
+  }, [categoryOptions, initialCategoryIndex, preferenceKey, restoreCategoryIndex, restoreEnabled]);
 
   return {
     categoryIndex,

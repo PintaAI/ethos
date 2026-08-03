@@ -7,6 +7,18 @@ export type StoredTheme = ThemeSet & {
   createdAt: string;
 };
 
+export type TimeBoxPresetRange = {
+  startTime: string;
+  endTime: string;
+};
+
+export type TimeBoxCustomPreset = TimeBoxPresetRange & {
+  title: string;
+  color: string;
+};
+
+export type CashflowStatsPeriod = "daily" | "weekly" | "monthly" | "allTime";
+
 export type Preferences = {
   customThemes: StoredTheme[];
   selectedTheme: string;
@@ -14,11 +26,18 @@ export type Preferences = {
   textSize: number | null;
   textSpacing: number | null;
   activityView: "grid" | "calendar";
-  cashflowCategoryIndex: number | null;
-  cashflowQuickFillCategoryIndex: number | null;
+  cashflowCategoryIndex: string | null;
+  cashflowQuickFillCategoryIndex: string | null;
   cashflowView: "list" | "calendar";
+  cashflowCompactAmounts: boolean;
+  cashflowAmountsVisible: boolean;
+  cashflowStatsPeriod: CashflowStatsPeriod;
+  cloudSyncEnabled: boolean;
   currency: string;
   exchangeRates: Record<string, number> | null;
+  timeBoxSleepRange: TimeBoxPresetRange;
+  timeBoxWorkRange: TimeBoxPresetRange;
+  timeBoxCustomRange: TimeBoxCustomPreset | null;
 };
 
 const STORAGE_PREFIX = "@ethos/preferences";
@@ -29,12 +48,19 @@ const preferenceDefaults: Preferences = {
   hasSkippedOnboarding: false,
   textSize: null,
   textSpacing: null,
-  activityView: "grid",
+  activityView: "calendar",
   cashflowCategoryIndex: null,
   cashflowQuickFillCategoryIndex: null,
   cashflowView: "list",
+  cashflowCompactAmounts: true,
+  cashflowAmountsVisible: true,
+  cashflowStatsPeriod: "allTime",
+  cloudSyncEnabled: true,
   currency: "IDR",
   exchangeRates: null,
+  timeBoxSleepRange: { startTime: "22:00", endTime: "06:00" },
+  timeBoxWorkRange: { startTime: "09:00", endTime: "17:00" },
+  timeBoxCustomRange: null,
 };
 
 function getStorageKey(key: keyof Preferences) {

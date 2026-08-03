@@ -16,6 +16,7 @@ import { notificationsAreAllowedAsync } from "@/lib/notifications";
 import { formatRelativeTime } from "@/lib/relativeTime";
 import { waitForSyncIdleAsync } from "@/lib/sync/syncEngine";
 import { reconcileSyncBackgroundTaskAsync } from "@/tasks/syncBackground";
+import { clearCashflowStatsWidget } from "@/widgets/publishCashflowStatsWidget";
 
 const ACCOUNT_ROUTE = "/(cashflow)/(tabs)/profile/account" as Href;
 const FONT_SETTINGS_ROUTE = "/(cashflow)/(tabs)/profile/font-settings" as Href;
@@ -34,7 +35,6 @@ export function ProfileContent() {
   const [isCheckingForUpdate, setIsCheckingForUpdate] = useState(false);
   const [isUpdatingPhoto, setIsUpdatingPhoto] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState<boolean | null>(null);
-
   useEffect(() => {
     const refreshNotificationStatus = () => {
       notificationsAreAllowedAsync()
@@ -126,11 +126,18 @@ export function ProfileContent() {
   const handleSignOut = async () => {
     try {
       await reconcileSyncBackgroundTaskAsync(false);
-      await waitForSyncIdleAsync();
+      await waitForSyncIdleAsync(db);
     } catch (error) {
       console.warn("Failed to disable background sync on sign out", error);
     }
     try {
+      await clearCashflowStatsWidget({
+        period: t("analytics.allTime"),
+        balance: t("analytics.balance"),
+        income: t("analytics.income"),
+        expenses: t("analytics.expenses"),
+        empty: t("cashflow.empty.withoutDateHint"),
+      });
       await clearCashflowDatabase(db);
       await clearPreferences({ preserveOnboarding: true });
       await cashflowData.refresh();
@@ -165,6 +172,26 @@ export function ProfileContent() {
       ? ""
       : t("profile.syncStatusLastSync", { time: formatRelativeTime(sync.lastSync) });
 
+  let cloudStatusDetail: string;
+
+  if (!auth.isAuthenticated) {
+    cloudStatusDetail = t("cloud.signInToSync");
+  } else if (!sync.cloudSyncEnabled) {
+    cloudStatusDetail = t("cloud.localOnly");
+  } else {
+    cloudStatusDetail = t("cloud.lastSynced", { time: formatRelativeTime(sync.lastSync) });
+  }
+
+  const handleCloudSyncEnabledChange = (enabled: boolean) => {
+    if (!auth.isAuthenticated) {
+      router.push({ pathname: "/auth", params: { returnTo: "cloud" } });
+      return;
+    }
+    sync.setCloudSyncEnabled(enabled).catch((error) =>
+      console.warn("Failed to update cloud sync preference", error),
+    );
+  };
+
   return (
     <ProfileContentBody
       isAuthenticated={auth.isAuthenticated}
@@ -179,6 +206,9 @@ export function ProfileContent() {
       isCheckingForUpdate={isCheckingForUpdate}
       isUpdatingPhoto={isUpdatingPhoto}
       notificationsEnabled={notificationsEnabled}
+      cloudStatusDetail={cloudStatusDetail}
+      cloudSyncEnabled={auth.isAuthenticated && sync.cloudSyncEnabled}
+      onCloudSyncEnabledChange={handleCloudSyncEnabledChange}
       onSignOut={handleSignOut}
       onSyncNow={() => void sync.syncNow()}
       onCheckForUpdates={() => void checkForUpdates()}

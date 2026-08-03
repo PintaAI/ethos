@@ -127,6 +127,7 @@ export async function localEntryToCreate(
   }
 
   const body: CreateEntryBody = {
+    clientId: local.id,
     name: local.name,
     nominal: local.nominal,
     io: local.io,
@@ -298,8 +299,8 @@ export function serverManagementToLocal(
   };
 }
 
-export function localManagementToCreate(local: ManagementRow): { name: string } {
-  return { name: local.name };
+export function localManagementToCreate(local: ManagementRow): { name: string; clientId: string } {
+  return { name: local.name, clientId: local.id };
 }
 
 export function localManagementToUpdate(local: ManagementRow): { name: string } {
@@ -346,6 +347,7 @@ export type CategoryUpsertFields = {
 export type CategoryBudgetsBody = Record<string, number>;
 
 export type CategoryCreateBody = {
+  clientId?: string;
   name: string;
   color?: string;
   icon?: string;
@@ -353,7 +355,7 @@ export type CategoryCreateBody = {
   managementId: string;
 };
 
-export type CategoryUpdateBody = CategoryCreateBody;
+export type CategoryUpdateBody = Omit<CategoryCreateBody, "clientId">;
 
 export function serverCategoryToLocal(
   server: ServerCategory,
@@ -394,7 +396,7 @@ export async function localCategoryToCreate(
 ): Promise<CategoryCreateBody | null> {
   const managementId = await getManagementRemoteId(db, local.management_id);
   if (!managementId) return null;
-  const body: CategoryCreateBody = { name: local.name, managementId };
+  const body: CategoryCreateBody = { clientId: local.id, name: local.name, managementId };
   const serverColor = localCategoryColorToServer(local.color);
   const serverIcon = localCategoryIconToServer(local.icon);
   if (serverColor) body.color = serverColor;
@@ -408,7 +410,10 @@ export async function localCategoryToUpdate(
   db: SQLiteDatabase,
   local: CategoryRow,
 ): Promise<CategoryUpdateBody | null> {
-  return localCategoryToCreate(db, local);
+  const body = await localCategoryToCreate(db, local);
+  if (!body) return null;
+  delete body.clientId;
+  return body;
 }
 
 // ---------------------------------------------------------------------------
@@ -441,13 +446,14 @@ export type QuickFillUpsertFields = {
 };
 
 export type QuickFillCreateBody = {
+  clientId?: string;
   name: string;
   nominal: number;
   managementId: string;
   categoryId?: string;
 };
 
-export type QuickFillUpdateBody = QuickFillCreateBody;
+export type QuickFillUpdateBody = Omit<QuickFillCreateBody, "clientId">;
 
 export function serverQuickFillToLocal(
   server: ServerQuickFill,
@@ -476,6 +482,7 @@ async function quickFillBody(
   const managementId = await getManagementRemoteId(db, local.management_id);
   if (!managementId) return null;
   const body: QuickFillCreateBody = {
+    clientId: local.id,
     name: local.label,
     nominal: local.amount ?? 0,
     managementId,
@@ -492,7 +499,11 @@ export function localQuickFillToCreate(db: SQLiteDatabase, local: QuickFillRow):
 }
 
 export function localQuickFillToUpdate(db: SQLiteDatabase, local: QuickFillRow): Promise<QuickFillUpdateBody | null> {
-  return quickFillBody(db, local);
+  return quickFillBody(db, local).then((body) => {
+    if (!body) return null;
+    delete body.clientId;
+    return body;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -591,6 +602,7 @@ export type RecurringEntryUpsertFields = {
 };
 
 export type RecurringEntryCreateBody = {
+  clientId?: string;
   name: string;
   nominal: number;
   io: Io;
@@ -600,7 +612,7 @@ export type RecurringEntryCreateBody = {
   categoryId?: string;
 };
 
-export type RecurringEntryUpdateBody = RecurringEntryCreateBody;
+export type RecurringEntryUpdateBody = Omit<RecurringEntryCreateBody, "clientId">;
 
 function todayDateKey(): string {
   const d = new Date();
@@ -640,6 +652,7 @@ async function recurringBody(
   const managementId = await getManagementRemoteId(db, local.management_id);
   if (!managementId) return null;
   const body: RecurringEntryCreateBody = {
+    clientId: local.id,
     name: local.name,
     nominal: local.nominal,
     io: local.io,
@@ -659,5 +672,9 @@ export function localRecurringToCreate(db: SQLiteDatabase, local: RecurringEntry
 }
 
 export function localRecurringToUpdate(db: SQLiteDatabase, local: RecurringEntryRow): Promise<RecurringEntryUpdateBody | null> {
-  return recurringBody(db, local);
+  return recurringBody(db, local).then((body) => {
+    if (!body) return null;
+    delete body.clientId;
+    return body;
+  });
 }

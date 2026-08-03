@@ -179,6 +179,7 @@ export const CategorySlider = forwardRef<CategorySliderHandle, {
   onAddPress?: () => void;
   showDots?: boolean;
   onFeedback?: () => void;
+  onUserInteraction?: () => void;
 }>(({
   categories,
   selectedIndex,
@@ -187,6 +188,7 @@ export const CategorySlider = forwardRef<CategorySliderHandle, {
   onAddPress,
   showDots = true,
   onFeedback,
+  onUserInteraction,
 }, ref) => {
   const { t } = useTranslation();
   const appTheme = useAppTheme();
@@ -250,10 +252,11 @@ export const CategorySlider = forwardRef<CategorySliderHandle, {
   }), []);
 
   const handleChipPress = useCallback((index: number) => {
+    onUserInteraction?.();
     onFeedback?.();
     onChangeIndex(index);
     scrollRef.current?.scrollTo({ x: index * CATEGORY_CHIP_SNAP, animated: true });
-  }, [onChangeIndex, onFeedback]);
+  }, [onChangeIndex, onFeedback, onUserInteraction]);
 
   const handleAddPress = useCallback(() => {
     onFeedback?.();
@@ -290,6 +293,7 @@ export const CategorySlider = forwardRef<CategorySliderHandle, {
         decelerationRate="fast"
         style={{ overflow: "visible" }}
         onScroll={scrollHandler}
+        onScrollBeginDrag={onUserInteraction}
         contentContainerStyle={{ paddingHorizontal: sidePad }}
       >
         {categories.map((item, index) => (

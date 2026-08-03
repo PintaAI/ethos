@@ -323,12 +323,13 @@ export function ActivityHeatmap({ activity, selectedDate, onDateSelect }: Activi
   useEffect(() => {
     getPreference("activityView").then((saved) => {
       if (saved) setView(saved as ActivityView);
-    });
+    }).catch((error) => console.warn("Failed to load activity view", error));
   }, []);
 
   const handleViewChange = useCallback((nextView: ActivityView) => {
     setView(nextView);
-    setPreference("activityView", nextView);
+    void setPreference("activityView", nextView)
+      .catch((error) => console.warn("Failed to save activity view", error));
   }, []);
 
   return (

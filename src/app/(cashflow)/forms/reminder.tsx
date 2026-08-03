@@ -17,6 +17,7 @@ import {
   saveLocalReminderSettingsAsync,
   type LocalReminderSettings,
 } from "@/lib/localReminders";
+import { withDbLock } from "@/lib/sync/dbLock";
 import { requestNotificationPermissionsAsync } from "@/lib/notifications";
 
 const BUDGET_THRESHOLDS = [50, 80, 90, 100] as const;
@@ -41,7 +42,7 @@ export default function ReminderFormSheet() {
   const rowSurface = alpha(appTheme.colors.foreground, appTheme.isDark ? 0.045 : 0.035);
 
   useEffect(() => {
-    getLocalReminderSettingsAsync(db)
+    withDbLock(() => getLocalReminderSettingsAsync(db))
       .then(setSettings)
       .catch((error) => Alert.alert(t("reminder.loadFailed"), error instanceof Error ? error.message : t("reminder.tryAgain")))
       .finally(() => setIsLoading(false));

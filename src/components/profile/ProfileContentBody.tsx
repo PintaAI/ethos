@@ -26,6 +26,9 @@ export type ProfileContentBodyProps = {
   isCheckingForUpdate: boolean;
   isUpdatingPhoto: boolean;
   notificationsEnabled: boolean | null;
+  cloudStatusDetail: string;
+  cloudSyncEnabled: boolean;
+  onCloudSyncEnabledChange: (enabled: boolean) => void;
   onSignOut: () => void;
   onSyncNow: () => void;
   onCheckForUpdates: () => void;
@@ -42,7 +45,7 @@ export type ProfileContentBodyProps = {
 export function ProfileContentBody(props: ProfileContentBodyProps) {
   const appTheme = useAppTheme();
   const { t, i18n } = useTranslation();
-  const { currency, setCurrency } = useCurrency();
+  const { compactAmountsEnabled, currency, setCompactAmountsEnabled, setCurrency } = useCurrency();
   const [expandedSetting, setExpandedSetting] = useState<"theme" | "currency" | "language" | null>(null);
   const rowColor = alpha(appTheme.colors.muted, appTheme.isDark ? 0.18 : 0.1);
 
@@ -124,8 +127,8 @@ export function ProfileContentBody(props: ProfileContentBodyProps) {
       <Section title={t("profile.account")}>
         {props.isAuthenticated ? (
           <>
-            <Row label={props.displayName} detail={props.email} icon="person.crop.circle" onPress={props.onOpenAccount} />
-            <Row label={props.syncActionLabel} detail={props.syncDetail} icon="arrow.triangle.2.circlepath" onPress={props.onSyncNow} />
+            <Row label={t("profile.accountDetails")} detail={props.email} icon="person.crop.circle" onPress={props.onOpenAccount} />
+            <Row label={t("profile.deleteAccount")} icon="trash" onPress={props.onOpenAccount} destructive />
             <Row label={t("common.signOut")} icon="rectangle.portrait.and.arrow.right" onPress={props.onSignOut} destructive />
           </>
         ) : <Row label={t("common.signIn")} icon="person.badge.key" onPress={props.onOpenAuth} />}
@@ -148,9 +151,40 @@ export function ProfileContentBody(props: ProfileContentBodyProps) {
         <Row label="Font" icon="textformat.size" onPress={props.onOpenFontSettings} />
       </Section>
 
+      <Section title={t("cloud.title")}>
+        <View className="min-h-14 flex-row items-center justify-between px-4" style={{ backgroundColor: rowColor }}>
+          <View className="min-w-0 flex-1 flex-row items-center gap-3">
+            <AppSymbol name="icloud" size={20} tintColor={appTheme.colors.primary} fallback={<Text style={{ color: appTheme.colors.primary }}>?</Text>} />
+            <View className="min-w-0 flex-1">
+              <Text className="font-semibold" style={{ color: appTheme.colors.foreground }}>{t("cloud.title")}</Text>
+              <Text className="text-sm" style={{ color: appTheme.colors.muted }}>{props.cloudStatusDetail}</Text>
+            </View>
+          </View>
+          <Switch
+            value={props.cloudSyncEnabled}
+            onValueChange={props.onCloudSyncEnabledChange}
+            trackColor={{ true: appTheme.colors.primary }}
+          />
+        </View>
+        {props.isAuthenticated && props.cloudSyncEnabled ? (
+          <Row label={props.syncActionLabel} detail={props.syncDetail} icon="arrow.triangle.2.circlepath" onPress={props.onSyncNow} />
+        ) : null}
+      </Section>
+
       <Section title={t("profile.app")}>
         <Row label={t("profile.currency")} detail={currency} icon="dollarsign.circle" onPress={() => setExpandedSetting(expandedSetting === "currency" ? null : "currency")} />
         {expandedSetting === "currency" ? <Options options={SUPPORTED_CURRENCIES.map((option) => ({ label: `${option.flag} ${option.code} - ${option.name}`, value: option.code }))} selected={currency} onSelect={setCurrency} /> : null}
+        <View className="min-h-14 flex-row items-center justify-between px-4" style={{ backgroundColor: rowColor }}>
+          <View className="flex-row items-center gap-3">
+            <AppSymbol name="number.circle" size={20} tintColor={appTheme.colors.primary} fallback={<Text style={{ color: appTheme.colors.primary }}>?</Text>} />
+            <Text className="font-semibold" style={{ color: appTheme.colors.foreground }}>{t("profile.compactAmounts")}</Text>
+          </View>
+          <Switch
+            value={compactAmountsEnabled}
+            onValueChange={setCompactAmountsEnabled}
+            trackColor={{ true: appTheme.colors.primary }}
+          />
+        </View>
         <Row label={t("language.label")} detail={i18n.resolvedLanguage === "id" ? t("language.indonesia") : t("language.english")} icon="globe" onPress={() => setExpandedSetting(expandedSetting === "language" ? null : "language")} />
         {expandedSetting === "language" ? <Options options={[{ label: t("language.english"), value: "en" }, { label: t("language.indonesia"), value: "id" }]} selected={i18n.resolvedLanguage || "en"} onSelect={(value) => void i18n.changeLanguage(value)} /> : null}
       </Section>

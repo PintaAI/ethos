@@ -1,9 +1,15 @@
 import type { SQLiteDatabase } from "expo-sqlite";
+import { withDbClearBarrier } from "@/lib/sync/dbLock";
 
-const DATABASE_VERSION = 9;
+const DATABASE_VERSION = 20;
+
+async function hasColumn(db: SQLiteDatabase, table: string, column: string) {
+  const columns = await db.getAllAsync<{ name: string }>(`PRAGMA table_info(${table})`);
+  return columns.some((item) => item.name === column);
+}
 
 export async function migrateCashflowDatabase(db: SQLiteDatabase) {
-  await db.execAsync("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;");
+  await db.execAsync("PRAGMA busy_timeout = 5000; PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;");
 
   const result = await db.getFirstAsync<{ user_version: number }>("PRAGMA user_version");
   let currentVersion = result?.user_version ?? 0;
@@ -301,11 +307,215 @@ export async function migrateCashflowDatabase(db: SQLiteDatabase) {
     currentVersion = 9;
   }
 
+  if (currentVersion < 10) {
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS note_cache (
+        user_id TEXT NOT NULL,
+        id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        icon TEXT NOT NULL,
+        icon_type TEXT NOT NULL,
+        icon_color TEXT NOT NULL,
+        content_json TEXT,
+        content_html TEXT,
+        content_markdown TEXT,
+        pinned INTEGER NOT NULL DEFAULT 0,
+        role TEXT NOT NULL,
+        member_count INTEGER NOT NULL DEFAULT 1,
+        members_json TEXT NOT NULL DEFAULT '[]',
+        server_updated_at TEXT NOT NULL,
+        cached_at TEXT NOT NULL,
+        PRIMARY KEY (user_id, id)
+      );
+
+      CREATE TABLE IF NOT EXISTS note_drafts (
+        user_id TEXT NOT NULL,
+        note_id TEXT NOT NULL,
+        content_json TEXT NOT NULL,
+        base_updated_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        error TEXT,
+        PRIMARY KEY (user_id, note_id),
+        FOREIGN KEY (user_id, note_id) REFERENCES note_cache(user_id, id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS note_cache_user_updated_idx
+      ON note_cache(user_id, pinned, server_updated_at);
+    `);
+    currentVersion = 10;
+  }
+
+  if (currentVersion < 11) {
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS habits (
+        id TEXT PRIMARY KEY NOT NULL,
+        name TEXT NOT NULL,
+        color TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS habit_logs (
+        habit_id TEXT NOT NULL REFERENCES habits(id) ON DELETE CASCADE,
+        date TEXT NOT NULL,
+        completed_at TEXT NOT NULL,
+        PRIMARY KEY (habit_id, date)
+      );
+
+      CREATE TABLE IF NOT EXISTS time_boxes (
+        id TEXT PRIMARY KEY NOT NULL,
+        date TEXT NOT NULL,
+        title TEXT NOT NULL,
+        start_time TEXT NOT NULL,
+        end_time TEXT NOT NULL,
+        completed INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS habit_logs_date_idx ON habit_logs(date);
+      CREATE INDEX IF NOT EXISTS time_boxes_date_time_idx ON time_boxes(date, start_time);
+    `);
+    currentVersion = 11;
+  }
+
+  if (currentVersion < 12) {
+    await db.execAsync("ALTER TABLE time_boxes ADD COLUMN color TEXT;");
+    currentVersion = 12;
+  }
+
+  if (currentVersion < 13) {
+    await db.execAsync(`
+      UPDATE time_boxes SET color = '#5B8CFF'
+      WHERE color IS NULL AND lower(trim(title)) IN ('sleep', 'tidur');
+
+      UPDATE time_boxes SET color = '#2ECF8F'
+      WHERE color IS NULL AND lower(trim(title)) IN ('work', 'kerja');
+    `);
+    currentVersion = 13;
+  }
+
+  if (currentVersion < 14) {
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS day_presets (
+        id TEXT PRIMARY KEY NOT NULL,
+        name TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS day_preset_blocks (
+        id TEXT PRIMARY KEY NOT NULL,
+        preset_id TEXT NOT NULL REFERENCES day_presets(id) ON DELETE CASCADE,
+        title TEXT NOT NULL,
+        start_time TEXT NOT NULL,
+        end_time TEXT NOT NULL,
+        color TEXT,
+        sort_order INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS day_preset_schedules (
+        id TEXT PRIMARY KEY NOT NULL,
+        preset_id TEXT NOT NULL REFERENCES day_presets(id) ON DELETE CASCADE,
+        start_date TEXT NOT NULL,
+        frequency TEXT NOT NULL CHECK (frequency IN ('once', 'daily', 'weekly')),
+        weekdays_json TEXT NOT NULL DEFAULT '[]',
+        active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL
+      );
+
+    `);
+    if (!await hasColumn(db, "time_boxes", "preset_schedule_id")) {
+      await db.execAsync("ALTER TABLE time_boxes ADD COLUMN preset_schedule_id TEXT;");
+    }
+    if (!await hasColumn(db, "time_boxes", "preset_block_id")) {
+      await db.execAsync("ALTER TABLE time_boxes ADD COLUMN preset_block_id TEXT;");
+    }
+    await db.execAsync(`
+      CREATE UNIQUE INDEX IF NOT EXISTS time_boxes_preset_occurrence_idx
+      ON time_boxes(preset_schedule_id, preset_block_id, date)
+      WHERE preset_schedule_id IS NOT NULL AND preset_block_id IS NOT NULL;
+    `);
+    currentVersion = 14;
+  }
+
+  if (currentVersion < 15) {
+    if (!await hasColumn(db, "time_boxes", "break_durations_json")) {
+      await db.execAsync("ALTER TABLE time_boxes ADD COLUMN break_durations_json TEXT NOT NULL DEFAULT '[]';");
+    }
+    if (!await hasColumn(db, "day_preset_blocks", "break_durations_json")) {
+      await db.execAsync("ALTER TABLE day_preset_blocks ADD COLUMN break_durations_json TEXT NOT NULL DEFAULT '[]';");
+    }
+    currentVersion = 15;
+  }
+
+  if (currentVersion < 16) {
+    if (!await hasColumn(db, "time_boxes", "dismissed")) {
+      await db.execAsync("ALTER TABLE time_boxes ADD COLUMN dismissed INTEGER NOT NULL DEFAULT 0;");
+    }
+    currentVersion = 16;
+  }
+
+  if (currentVersion < 17) {
+    await db.execAsync(`
+      DELETE FROM time_boxes
+      WHERE preset_schedule_id IS NOT NULL
+        AND completed = 0
+        AND NOT EXISTS (
+          SELECT 1 FROM day_preset_schedules
+          WHERE day_preset_schedules.id = time_boxes.preset_schedule_id
+        );
+    `);
+    currentVersion = 17;
+  }
+
+  if (currentVersion < 18) {
+    if (!await hasColumn(db, "habits", "weekdays_json")) {
+      await db.execAsync("ALTER TABLE habits ADD COLUMN weekdays_json TEXT NOT NULL DEFAULT '[0,1,2,3,4,5,6]';");
+    }
+    currentVersion = 18;
+  }
+
+  if (currentVersion < 19) {
+    if (!await hasColumn(db, "habits", "preferred_duration")) {
+      await db.execAsync("ALTER TABLE habits ADD COLUMN preferred_duration INTEGER NOT NULL DEFAULT 30;");
+    }
+    if (!await hasColumn(db, "time_boxes", "habit_id")) {
+      await db.execAsync("ALTER TABLE time_boxes ADD COLUMN habit_id TEXT REFERENCES habits(id) ON DELETE SET NULL;");
+    }
+    await db.execAsync(`
+      CREATE UNIQUE INDEX IF NOT EXISTS time_boxes_habit_date_idx
+      ON time_boxes(habit_id, date)
+      WHERE habit_id IS NOT NULL;
+    `);
+    currentVersion = 19;
+  }
+
+  if (currentVersion < 20) {
+    await db.execAsync(`
+      DELETE FROM time_boxes
+      WHERE preset_schedule_id IS NOT NULL
+        AND completed = 0
+        AND dismissed = 0
+        AND EXISTS (
+          SELECT 1
+          FROM day_preset_blocks b
+          JOIN day_preset_schedules s ON s.preset_id = b.preset_id
+          WHERE s.id = time_boxes.preset_schedule_id
+            AND b.id = time_boxes.preset_block_id
+            AND b.title = time_boxes.title
+            AND b.start_time = time_boxes.start_time
+            AND b.end_time = time_boxes.end_time
+            AND b.break_durations_json = time_boxes.break_durations_json
+            AND b.color IS time_boxes.color
+        );
+    `);
+    currentVersion = 20;
+  }
+
   await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
 }
 
 export async function clearCashflowDatabase(db: SQLiteDatabase) {
-  await db.withExclusiveTransactionAsync(async (txn) => {
+  await withDbClearBarrier(() => db.withExclusiveTransactionAsync(async (txn) => {
     await txn.execAsync(`
       DELETE FROM entries;
       DELETE FROM recurring_entries;
@@ -316,7 +526,15 @@ export async function clearCashflowDatabase(db: SQLiteDatabase) {
       DELETE FROM management_members;
       DELETE FROM managements;
       DELETE FROM users;
+      DELETE FROM note_drafts;
+      DELETE FROM note_cache;
+      DELETE FROM habit_logs;
+      DELETE FROM habits;
+      DELETE FROM time_boxes;
+      DELETE FROM day_preset_schedules;
+      DELETE FROM day_preset_blocks;
+      DELETE FROM day_presets;
       DELETE FROM app_preferences;
     `);
-  });
+  }));
 }

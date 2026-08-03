@@ -59,3 +59,15 @@ export function formatDateKey(
 ): string {
   return formatLocalizedDate(parseDateKey(dateKey), locale, options);
 }
+
+export function formatTime12h(value: string): string {
+  const [hours, minutes] = value.split(":").map(Number);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return value;
+  const period = hours < 12 ? "AM" : "PM";
+  const hour12 = hours % 12 || 12;
+  return `${hour12}:${String(minutes).padStart(2, "0")} ${period}`;
+}
+
+export function formatTimeRange12h(startTime: string, endTime: string): string {
+  return `${formatTime12h(startTime)} - ${formatTime12h(endTime)}`;
+}

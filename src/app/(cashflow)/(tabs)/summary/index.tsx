@@ -12,7 +12,7 @@ export default function SummaryScreen() {
   const { t, i18n } = useTranslation();
   const { from, to, month, review } = useLocalSearchParams<{ from?: string; to?: string; month?: string; review?: string }>();
   const { open } = useDrawer();
-  const { analytics, entries, categories, activeManagement } = useCashflowData();
+  const { analytics, entries, categories, activeManagement, isSwitchingManagement } = useCashflowData();
   const [datePeriod, setDatePeriod] = useState<DatePeriod>(DATE_PRESETS[0]);
   const [selectedMonth, setSelectedMonth] = useState(() => new Date());
   const [appliedReview, setAppliedReview] = useState<string | null>(null);
@@ -66,7 +66,7 @@ export default function SummaryScreen() {
           pathname: "/forms/category-entries",
           params: { category, from: datePeriod.from ?? "", to: datePeriod.to ?? "" },
         })}
-        header={<CashflowStatsCard stats={filteredStats} hideMoreButton managementName={activeManagement?.name} />}
+        header={<CashflowStatsCard stats={filteredStats} hideMoreButton managementName={activeManagement?.name} loading={isSwitchingManagement} />}
         hideStats
       />
     </>

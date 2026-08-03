@@ -22,7 +22,7 @@ export default function HomeScreen() {
   const { open } = useDrawer();
   const appTheme = useAppTheme();
   const sync = useSyncStatus();
-  const { activity, entries, stats, activeManagement } = useCashflowData();
+  const { activity, entries, stats, activeManagement, isSwitchingManagement } = useCashflowData();
   const latestDate = activity.days.at(-1)?.date ?? toDateKey(new Date());
   const [selectedDate, setSelectedDate] = useState(latestDate);
   const effectiveSelectedDate = activity.days.some((day) => day.date === selectedDate) ? selectedDate : latestDate;
@@ -34,11 +34,11 @@ export default function HomeScreen() {
 
   const homeHeader = useMemo(() => (
     <View>
-      <CashflowStatsCard stats={stats} managementName={activeManagement?.name} />
+      <CashflowStatsCard stats={stats} managementName={activeManagement?.name} loading={isSwitchingManagement} />
       <ActivityHeatmap activity={activity} selectedDate={effectiveSelectedDate} onDateSelect={setSelectedDate} />
       <View className="mt-5" />
     </View>
-  ), [stats, activeManagement?.name, activity, effectiveSelectedDate]);
+  ), [stats, activeManagement?.name, activity, effectiveSelectedDate, isSwitchingManagement]);
 
   return (
     <>

@@ -15,6 +15,7 @@ import { alpha } from "@/lib/color";
 import { clearPreferences } from "@/lib/preferences";
 import { waitForSyncIdleAsync } from "@/lib/sync/syncEngine";
 import { reconcileSyncBackgroundTaskAsync } from "@/tasks/syncBackground";
+import { clearCashflowStatsWidget } from "@/widgets/publishCashflowStatsWidget";
 
 function FormSymbol({ name, color, size = 16 }: { name: SFSymbol; color: string; size?: number }) {
   return <AppSymbol name={name} size={size} tintColor={color} fallback={<Text style={{ color }}>•</Text>} />;
@@ -47,10 +48,17 @@ export default function ProfileAccountScreen() {
       await deleteAccount();
       try {
         await reconcileSyncBackgroundTaskAsync(false);
-        await waitForSyncIdleAsync();
+        await waitForSyncIdleAsync(db);
       } catch (error) {
         console.warn("Failed to stop sync after account deletion", error);
       }
+      await clearCashflowStatsWidget({
+        period: t("analytics.allTime"),
+        balance: t("analytics.balance"),
+        income: t("analytics.income"),
+        expenses: t("analytics.expenses"),
+        empty: t("cashflow.empty.withoutDateHint"),
+      });
       await clearCashflowDatabase(db);
       await clearPreferences();
       await cashflowData.refresh();

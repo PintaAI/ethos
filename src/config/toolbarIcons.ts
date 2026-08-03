@@ -17,8 +17,16 @@ export const toolbarIcons = {
     ios: "plus",
     android: import("@expo/material-symbols/add.xml"),
   }),
+  preset: Icon.select({
+    ios: "calendar.badge.plus",
+    android: import("@expo/material-symbols/event_repeat.xml"),
+  }),
   clear: Icon.select({
     ios: "eraser",
     android: import("@expo/material-symbols/ink_eraser.xml"),
+  }),
+  settings: Icon.select({
+    ios: "gearshape",
+    android: import("@expo/material-symbols/settings.xml"),
   }),
 };

@@ -9,6 +9,7 @@ import {
   notificationsAreAllowedAsync,
   prepareDefaultNotificationChannelAsync,
 } from "@/lib/notifications";
+import { withDbLock } from "@/lib/sync/dbLock";
 
 const SETTINGS_KEY = "local_reminder_settings";
 const BUDGET_ALERTS_KEY = "local_budget_alerts_sent";
@@ -16,6 +17,10 @@ const NO_ENTRY_KIND = "standalone-no-entry-reminder";
 const MONTHLY_REVIEW_KIND = "standalone-monthly-review";
 const MONTHLY_REVIEW_SCHEDULE = "day-1-at-10:00";
 let reconcileQueue: Promise<void> = Promise.resolve();
+
+type ReconcileReminderOptions = {
+  shouldCancel?: () => boolean;
+};
 
 export type LocalReminderSettings = {
   noEntryEnabled: boolean;
@@ -66,38 +71,47 @@ export async function getLocalReminderSettingsAsync(db: SQLiteDatabase): Promise
 }
 
 export async function saveLocalReminderSettingsAsync(db: SQLiteDatabase, settings: LocalReminderSettings) {
-  await db.runAsync(
-    `INSERT INTO app_preferences (key, value) VALUES (?, ?)
-     ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-    SETTINGS_KEY,
-    JSON.stringify(settings),
-  );
-  await reconcileLocalRemindersAsync(db);
+  await withDbLock(async () => {
+    await db.runAsync(
+      `INSERT INTO app_preferences (key, value) VALUES (?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+      SETTINGS_KEY,
+      JSON.stringify(settings),
+    );
+    await reconcileLocalRemindersAsync(db);
+  });
 }
 
-export function reconcileLocalRemindersAsync(db: SQLiteDatabase) {
-  const next = reconcileQueue.catch(() => undefined).then(() => reconcileLocalRemindersNowAsync(db));
+export function reconcileLocalRemindersAsync(db: SQLiteDatabase, options: ReconcileReminderOptions = {}) {
+  const next = reconcileQueue.catch(() => undefined).then(() => reconcileLocalRemindersNowAsync(db, options));
   reconcileQueue = next;
   return next;
 }
 
-async function reconcileLocalRemindersNowAsync(db: SQLiteDatabase) {
+async function reconcileLocalRemindersNowAsync(db: SQLiteDatabase, options: ReconcileReminderOptions) {
   if (Platform.OS !== "ios" && Platform.OS !== "android") return;
+  if (options.shouldCancel?.()) return;
 
   const settings = await getLocalReminderSettingsAsync(db);
-  await reconcileNoEntryReminderAsync(db, settings);
-  if (settings.budgetAlertEnabled) await evaluateBudgetAlertsAsync(db, settings.budgetThreshold);
-  await reconcileMonthlyReviewAsync(settings);
+  await reconcileNoEntryReminderAsync(db, settings, options.shouldCancel);
+  if (options.shouldCancel?.()) return;
+  if (settings.budgetAlertEnabled) await evaluateBudgetAlertsAsync(db, settings.budgetThreshold, options.shouldCancel);
+  if (options.shouldCancel?.()) return;
+  await reconcileMonthlyReviewAsync(settings, options.shouldCancel);
 }
 
-async function reconcileMonthlyReviewAsync(settings: LocalReminderSettings) {
+async function reconcileMonthlyReviewAsync(settings: LocalReminderSettings, shouldCancel?: () => boolean) {
+  if (shouldCancel?.()) return;
   const scheduled = await Notifications.getAllScheduledNotificationsAsync();
   const title = i18n.t("reminder.monthlyReviewNotificationTitle");
   const body = i18n.t("reminder.monthlyReviewNotificationBody");
   const monthlyReviews = scheduled.filter((notification) => notification.content.data?.kind === MONTHLY_REVIEW_KIND);
 
   if (!settings.monthlyReviewEnabled || !await notificationsAreAllowedAsync()) {
-    await Promise.all(monthlyReviews.map((notification) => Notifications.cancelScheduledNotificationAsync(notification.identifier)));
+    for (const notification of monthlyReviews) {
+      if (shouldCancel?.()) return;
+      await Notifications.cancelScheduledNotificationAsync(notification.identifier);
+    }
     return;
   }
 
@@ -106,11 +120,12 @@ async function reconcileMonthlyReviewAsync(settings: LocalReminderSettings) {
     notification.content.title === title &&
     notification.content.body === body
   ));
-  await Promise.all(
-    monthlyReviews
-      .filter((notification) => notification.identifier !== current?.identifier)
-      .map((notification) => Notifications.cancelScheduledNotificationAsync(notification.identifier)),
-  );
+  for (const notification of monthlyReviews) {
+    if (shouldCancel?.()) return;
+    if (notification.identifier !== current?.identifier) {
+      await Notifications.cancelScheduledNotificationAsync(notification.identifier);
+    }
+  }
   if (current) return;
 
   await prepareDefaultNotificationChannelAsync();
@@ -136,13 +151,15 @@ async function reconcileMonthlyReviewAsync(settings: LocalReminderSettings) {
   });
 }
 
-async function reconcileNoEntryReminderAsync(db: SQLiteDatabase, settings: LocalReminderSettings) {
+async function reconcileNoEntryReminderAsync(db: SQLiteDatabase, settings: LocalReminderSettings, shouldCancel?: () => boolean) {
+  if (shouldCancel?.()) return;
   const scheduled = await Notifications.getAllScheduledNotificationsAsync();
-  await Promise.all(
-    scheduled
-      .filter((notification) => notification.content.data?.kind === NO_ENTRY_KIND)
-      .map((notification) => Notifications.cancelScheduledNotificationAsync(notification.identifier)),
-  );
+  for (const notification of scheduled) {
+    if (shouldCancel?.()) return;
+    if (notification.content.data?.kind === NO_ENTRY_KIND) {
+      await Notifications.cancelScheduledNotificationAsync(notification.identifier);
+    }
+  }
 
   if (!settings.noEntryEnabled || !await notificationsAreAllowedAsync()) return;
 
@@ -157,10 +174,11 @@ async function reconcileNoEntryReminderAsync(db: SQLiteDatabase, settings: Local
   if (entry || date <= now) date.setDate(date.getDate() + 1);
 
   await prepareDefaultNotificationChannelAsync();
-  await Promise.all(Array.from({ length: 14 }, (_, dayOffset) => {
+  for (let dayOffset = 0; dayOffset < 14; dayOffset += 1) {
+    if (shouldCancel?.()) return;
     const notificationDate = new Date(date);
     notificationDate.setDate(notificationDate.getDate() + dayOffset);
-    return Notifications.scheduleNotificationAsync({
+    await Notifications.scheduleNotificationAsync({
       content: {
         title: i18n.t("reminder.noEntryNotificationTitle"),
         body: i18n.t("reminder.noEntryNotificationBody"),
@@ -173,7 +191,7 @@ async function reconcileNoEntryReminderAsync(db: SQLiteDatabase, settings: Local
         channelId: Platform.OS === "android" ? DEFAULT_NOTIFICATION_CHANNEL_ID : undefined,
       },
     });
-  }));
+  }
 }
 
 type BudgetRule = {
@@ -185,7 +203,7 @@ type BudgetRule = {
   nominal: number;
 };
 
-async function evaluateBudgetAlertsAsync(db: SQLiteDatabase, threshold: number) {
+async function evaluateBudgetAlertsAsync(db: SQLiteDatabase, threshold: number, shouldCancel?: () => boolean) {
   if (!await notificationsAreAllowedAsync()) return;
 
   const overall = await db.getAllAsync<{
@@ -250,6 +268,7 @@ async function evaluateBudgetAlertsAsync(db: SQLiteDatabase, threshold: number) 
   const now = new Date();
   let changed = false;
   for (const rule of rules) {
+    if (shouldCancel?.()) return;
     const range = getPeriodRange(now, rule.period);
     const key = `${rule.id}:${rule.period}:${range.key}:${threshold}`;
     if (sent.has(key)) continue;

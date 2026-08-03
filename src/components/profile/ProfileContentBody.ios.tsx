@@ -40,6 +40,9 @@ export type ProfileContentBodyProps = {
   isCheckingForUpdate: boolean;
   isUpdatingPhoto: boolean;
   notificationsEnabled: boolean | null;
+  cloudStatusDetail: string;
+  cloudSyncEnabled: boolean;
+  onCloudSyncEnabledChange: (enabled: boolean) => void;
   onSignOut: () => void;
   onSyncNow: () => void;
   onCheckForUpdates: () => void;
@@ -66,6 +69,9 @@ export function ProfileContentBody({
   isCheckingForUpdate,
   isUpdatingPhoto,
   notificationsEnabled,
+  cloudStatusDetail,
+  cloudSyncEnabled,
+  onCloudSyncEnabledChange,
   onSignOut,
   onSyncNow,
   onCheckForUpdates,
@@ -81,7 +87,7 @@ export function ProfileContentBody({
   const appTheme = useAppTheme();
   const { t, i18n } = useTranslation();
   const { theme, setTheme } = appTheme;
-  const { currency, setCurrency } = useCurrency();
+  const { compactAmountsEnabled, currency, setCompactAmountsEnabled, setCurrency } = useCurrency();
   const rowBackground = alpha(appTheme.colors.muted, appTheme.isDark ? 0.18 : 0.1);
   const profileHeaderVerticalPadding = Math.max(16, Math.round(appTheme.textSize * 1.1));
   const rowModifiers = [listRowBackground(rowBackground)];
@@ -143,7 +149,7 @@ export function ProfileContentBody({
               <LabeledContent
                 label={
                   <Label
-                    title={displayName}
+                    title={t("profile.accountDetails")}
                     icon={<Image systemName="person.crop.circle" size={SETTINGS_ICON_SIZE} color={appTheme.colors.primary} />}
                   />
                 }
@@ -151,6 +157,17 @@ export function ProfileContentBody({
               >
                 <Text>{email}</Text>
               </LabeledContent>
+            ) : null}
+            {isAuthenticated ? (
+              <Button
+                onPress={onOpenAccount}
+                modifiers={[...rowModifiers, tint(appTheme.colors.negative)]}
+              >
+                <Label
+                  title={t("profile.deleteAccount")}
+                  icon={<Image systemName="trash" size={SETTINGS_ICON_SIZE} color={appTheme.colors.negative} />}
+                />
+              </Button>
             ) : null}
             {!isAuthenticated ? (
               <Button
@@ -164,6 +181,31 @@ export function ProfileContentBody({
               </Button>
             ) : null}
             {isAuthenticated ? (
+              <Button
+                onPress={onSignOut}
+                modifiers={[...rowModifiers, tint(appTheme.colors.negative)]}
+              >
+                <Label
+                  title={t("common.signOut")}
+                  icon={<Image systemName="rectangle.portrait.and.arrow.right" size={SETTINGS_ICON_SIZE} color={appTheme.colors.negative} />}
+                />
+              </Button>
+            ) : null}
+          </Section>
+
+          <Section title={t("cloud.title")}>
+            <Toggle
+              isOn={cloudSyncEnabled}
+              onIsOnChange={onCloudSyncEnabledChange}
+              modifiers={[...rowModifiers, tint(appTheme.colors.primary)]}
+            >
+              <Label
+                title={t("cloud.title")}
+                icon={<Image systemName="icloud" size={SETTINGS_ICON_SIZE} color={appTheme.colors.primary} />}
+              />
+              <Text>{cloudStatusDetail}</Text>
+            </Toggle>
+            {isAuthenticated && cloudSyncEnabled ? (
               <LabeledContent
                 label={
                   <Label
@@ -179,17 +221,6 @@ export function ProfileContentBody({
               >
                 <Text>{syncDetail}</Text>
               </LabeledContent>
-            ) : null}
-            {isAuthenticated ? (
-              <Button
-                onPress={onSignOut}
-                modifiers={[...rowModifiers, tint(appTheme.colors.negative)]}
-              >
-                <Label
-                  title={t("common.signOut")}
-                  icon={<Image systemName="rectangle.portrait.and.arrow.right" size={SETTINGS_ICON_SIZE} color={appTheme.colors.negative} />}
-                />
-              </Button>
             ) : null}
           </Section>
 
@@ -252,6 +283,16 @@ export function ProfileContentBody({
                 </Text>
               ))}
             </Picker>
+            <Toggle
+              isOn={compactAmountsEnabled}
+              onIsOnChange={setCompactAmountsEnabled}
+              modifiers={[...rowModifiers, tint(appTheme.colors.primary)]}
+            >
+              <Label
+                title={t("profile.compactAmounts")}
+                icon={<Image systemName="number.circle" size={SETTINGS_ICON_SIZE} color={appTheme.colors.primary} />}
+              />
+            </Toggle>
             <Picker
               label={
                 <Label

@@ -119,6 +119,7 @@ export type EntriesListResponse = {
 };
 
 export type CreateEntryBody = {
+  clientId?: string;
   name: string;
   nominal: number;
   io?: Io;

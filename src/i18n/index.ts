@@ -24,12 +24,14 @@ AsyncStorage.getItem(STORAGE_KEY).then((stored) => {
   return locale === "id" ? "id" : "en";
 }).then((lng) => {
   if (lng !== i18n.resolvedLanguage) {
-    i18n.changeLanguage(lng);
+    return i18n.changeLanguage(lng);
   }
-});
+  return undefined;
+}).catch((error) => console.warn("Failed to restore language", error));
 
 i18n.on("languageChanged", (lng) => {
-  AsyncStorage.setItem(STORAGE_KEY, lng);
+  void AsyncStorage.setItem(STORAGE_KEY, lng)
+    .catch((error) => console.warn("Failed to persist language", error));
 });
 
 export default i18n;

@@ -257,7 +257,8 @@ export function AppThemeProvider({ children }: { children: ReactNode }) {
       setTextSpacing(savedTextSpacing);
     }
 
-    void loadThemePreferences();
+    void loadThemePreferences()
+      .catch((error) => console.warn("Failed to load theme preferences", error));
 
     return () => {
       isMounted = false;
@@ -282,23 +283,27 @@ export function AppThemeProvider({ children }: { children: ReactNode }) {
 
   const setPersistedTheme = (nextTheme: ThemeName) => {
     setTheme(nextTheme);
-    void setPreference("selectedTheme", nextTheme);
+    void setPreference("selectedTheme", nextTheme)
+      .catch((error) => console.warn("Failed to save theme", error));
   };
 
   const setPersistedTextSize = (nextTextSize: number) => {
     setTextSize(nextTextSize);
-    void setPreference("textSize", nextTextSize);
+    void setPreference("textSize", nextTextSize)
+      .catch((error) => console.warn("Failed to save text size", error));
   };
 
   const setPersistedTextSpacing = (nextTextSpacing: number) => {
     setTextSpacing(nextTextSpacing);
-    void setPreference("textSpacing", nextTextSpacing);
+    void setPreference("textSpacing", nextTextSpacing)
+      .catch((error) => console.warn("Failed to save text spacing", error));
   };
 
   const resetTextSettings = () => {
     setTextSize(null);
     setTextSpacing(null);
-    void Promise.all([setPreference("textSize", null), setPreference("textSpacing", null)]);
+    void Promise.all([setPreference("textSize", null), setPreference("textSpacing", null)])
+      .catch((error) => console.warn("Failed to reset text settings", error));
   };
 
   const saveTheme = async (name: string, themeSet: ThemeSet) => {

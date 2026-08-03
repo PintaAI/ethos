@@ -2,12 +2,12 @@ import { apiDelete, apiGet, apiPatch, apiPost, apiUploadFile } from "./client";
 import type { ServerCurrentManagement, ServerManagement, ServerManagementImageUpdate, ServerManagementInvite } from "./types";
 import type { PickedUploadImage } from "../imageUpload";
 
-export function listManagements(): Promise<ServerManagement[]> {
-  return apiGet<ServerManagement[]>("/managements");
+export function listManagements(init: RequestInit = {}): Promise<ServerManagement[]> {
+  return apiGet<ServerManagement[]>("/managements", init);
 }
 
-export function createManagement(body: { name: string }): Promise<ServerManagement> {
-  return apiPost<ServerManagement>("/managements", body);
+export function createManagement(body: { name: string; clientId?: string }, init: RequestInit = {}): Promise<ServerManagement> {
+  return apiPost<ServerManagement>("/managements", body, init);
 }
 
 export function getActiveManagement(managementId?: string): Promise<ServerCurrentManagement | null> {
@@ -15,12 +15,12 @@ export function getActiveManagement(managementId?: string): Promise<ServerCurren
   return apiGet<ServerCurrentManagement | null>(`/managements/current${qs}`);
 }
 
-export function updateManagement(id: string, body: { name: string }): Promise<ServerManagement> {
-  return apiPatch<ServerManagement>(`/managements/${encodeURIComponent(id)}`, body);
+export function updateManagement(id: string, body: { name: string }, init: RequestInit = {}): Promise<ServerManagement> {
+  return apiPatch<ServerManagement>(`/managements/${encodeURIComponent(id)}`, body, init);
 }
 
-export function deleteManagement(id: string): Promise<void> {
-  return apiDelete(`/managements/${encodeURIComponent(id)}`);
+export function deleteManagement(id: string, init: RequestInit = {}): Promise<void> {
+  return apiDelete(`/managements/${encodeURIComponent(id)}`, init);
 }
 
 export function createManagementInvite(managementId: string): Promise<ServerManagementInvite> {

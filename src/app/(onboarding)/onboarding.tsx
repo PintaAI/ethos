@@ -17,20 +17,26 @@ import { useAppTheme } from "@/components/AppTheme";
 import { setPreference } from "@/lib/preferences";
 import { alpha } from "@/lib/color";
 import { ActivityHeatmap } from "@/components/cashflow/ActivityHeatmap";
-import { AnalyticsCharts } from "@/components/cashflow/AnalyticsCharts";
 import { CashflowStatsCard } from "@/components/cashflow/CashflowStatsCard";
 import { CashflowTable } from "@/components/cashflow/CashflowTable";
-import { ProfileContentBody } from "@/components/profile/ProfileContentBody";
+import { AppSymbol } from "@/components/AppSymbol";
+import { PersonalGrowthHomeContent } from "@/components/selfImprovement/PersonalGrowthHomeContent";
 import {
   sampleActivity,
-  sampleAnalytics,
   sampleDayEntries,
   sampleManagement,
   sampleSelectedDate,
   sampleStats,
 } from "@/data/cashflow/sampleData";
+import {
+  samplePersonalGrowthDate,
+  samplePersonalGrowthHabitLogs,
+  samplePersonalGrowthHabits,
+  samplePersonalGrowthNotes,
+  samplePersonalGrowthTimeBoxes,
+} from "@/data/selfImprovement/sampleData";
 
-type PreviewTabKey = "home" | "cashflow" | "summary" | "profile";
+type PreviewTabKey = "system" | "cashflow" | "growth";
 
 type OnboardingSlide = {
   body: PreviewTabKey;
@@ -64,7 +70,76 @@ function ProgressLine({
   return <Animated.View className="h-1.5 rounded-full" style={animatedStyle} />;
 }
 
-function HomePreviewBody() {
+function SystemPreviewBody() {
+  const appTheme = useAppTheme();
+  const { t } = useTranslation();
+  const spaces = [
+    {
+      label: t("onboarding.preview.cashflow"),
+      detail: t("onboarding.preview.cashflowDetail"),
+      icon: "banknote.fill" as const,
+    },
+    {
+      label: t("onboarding.preview.personalGrowth"),
+      detail: t("onboarding.preview.personalGrowthDetail"),
+      icon: "sparkles" as const,
+    },
+  ];
+
+  return (
+    <View className="flex-1 justify-center bg-[--app-color-background] p-5">
+      <Text className="mb-2 text-xs font-bold uppercase tracking-[2px]" style={{ color: appTheme.colors.primary }}>
+        {t("onboarding.preview.systemLabel")}
+      </Text>
+      <Text className="mb-5 text-2xl font-black tracking-tight" style={{ color: appTheme.colors.foreground }}>
+        {t("onboarding.preview.systemTitle")}
+      </Text>
+
+      <View className="overflow-hidden rounded-3xl border" style={{ borderColor: alpha(appTheme.colors.primary, 0.18) }}>
+        {spaces.map((space, index) => (
+          <View
+            key={space.label}
+            className="flex-row items-center gap-3 p-4"
+            style={{
+              backgroundColor: alpha(appTheme.colors.primary, index === 0 ? 0.08 : 0.04),
+              borderTopWidth: index === 0 ? 0 : 1,
+              borderTopColor: alpha(appTheme.colors.primary, 0.14),
+            }}
+          >
+            <View
+              className="h-10 w-10 items-center justify-center rounded-2xl"
+              style={{ backgroundColor: alpha(appTheme.colors.primary, 0.14) }}
+            >
+              <AppSymbol name={space.icon} size={21} tintColor={appTheme.colors.primary} />
+            </View>
+            <View className="min-w-0 flex-1">
+              <Text className="text-base font-bold" style={{ color: appTheme.colors.foreground }}>
+                {space.label}
+              </Text>
+              <Text className="mt-1 text-sm leading-5" style={{ color: appTheme.colors.muted }}>
+                {space.detail}
+              </Text>
+            </View>
+          </View>
+        ))}
+      </View>
+
+      <View className="mt-6 flex-row items-center justify-between">
+        {["plan", "act", "reflect"].map((step) => (
+          <View key={step} className="flex-1 items-center">
+            <View className="rounded-full px-2 py-2" style={{ backgroundColor: alpha(appTheme.colors.primary, 0.1) }}>
+              <Text className="text-xs font-bold uppercase tracking-[1px]" style={{ color: appTheme.colors.primary }}>
+                {t(`onboarding.preview.${step}`)}
+              </Text>
+            </View>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function CashflowPreviewBody() {
   return (
     <View className="bg-[--app-color-background] flex-1">
       <CashflowTable
@@ -86,49 +161,20 @@ function HomePreviewBody() {
   );
 }
 
-function SummaryPreviewBody() {
+function GrowthPreviewBody() {
   return (
-    <AnalyticsCharts
-      data={sampleAnalytics}
-      monthlyTrendData={sampleAnalytics.byMonth}
-      hideStats
-      header={
-        <CashflowStatsCard
-          stats={sampleStats}
-          hideMoreButton
-          managementName={sampleManagement.name}
-        />
-      }
-    />
-  );
-}
-
-function ProfilePreviewBody() {
-  return (
-    <ProfileContentBody
-      isAuthenticated
-      displayName="namakamu"
-      email="yourname@example.com"
-      initials="YO"
-      avatarSource={null}
-      syncStatus="idle"
-      syncActionLabel="Sync now"
-      syncDetail="Just now"
-      updateStatus="Up to date"
-      isCheckingForUpdate={false}
-      isUpdatingPhoto={false}
-      notificationsEnabled
-      onSignOut={() => {}}
-      onSyncNow={() => {}}
-      onCheckForUpdates={() => {}}
-      onUpdatePhoto={() => {}}
-      onOpenPrivacyPolicy={() => {}}
-      onContactSupport={() => {}}
-      onOpenAccount={() => {}}
-      onOpenFontSettings={() => {}}
-      onOpenNotificationSettings={() => {}}
-      onOpenAuth={() => {}}
-      onOpenOnboarding={() => {}}
+    <PersonalGrowthHomeContent
+      notes={samplePersonalGrowthNotes}
+      habits={samplePersonalGrowthHabits}
+      habitLogs={samplePersonalGrowthHabitLogs}
+      timeBoxes={samplePersonalGrowthTimeBoxes}
+      referenceDate={samplePersonalGrowthDate}
+      onOpenJournal={() => {}}
+      onOpenHabits={() => {}}
+      onOpenSchedule={() => {}}
+      onOpenTimeBox={() => {}}
+      onCompleteHabit={() => Promise.resolve()}
+      onCompleteTimeBox={() => Promise.resolve()}
     />
   );
 }
@@ -136,13 +182,7 @@ function ProfilePreviewBody() {
 function SlidePreview({ body }: { body: PreviewTabKey }) {
   return (
     <View style={{ flex: 1 }} pointerEvents="none">
-      {body === "home" ? (
-        <HomePreviewBody />
-      ) : body === "summary" ? (
-        <SummaryPreviewBody />
-      ) : body === "profile" ? (
-        <ProfilePreviewBody />
-      ) : null}
+      {body === "system" ? <SystemPreviewBody /> : body === "cashflow" ? <CashflowPreviewBody /> : <GrowthPreviewBody />}
     </View>
   );
 }
@@ -159,22 +199,22 @@ export default function OnboardingScreen() {
 
   const slides: OnboardingSlide[] = [
     {
-      body: "home",
-      eyebrow: t("onboarding.slides.track.eyebrow"),
-      title: t("onboarding.slides.track.title"),
-      description: t("onboarding.slides.track.description"),
+      body: "system",
+      eyebrow: t("onboarding.slides.system.eyebrow"),
+      title: t("onboarding.slides.system.title"),
+      description: t("onboarding.slides.system.description"),
     },
     {
-      body: "summary",
-      eyebrow: t("onboarding.slides.plan.eyebrow"),
-      title: t("onboarding.slides.plan.title"),
-      description: t("onboarding.slides.plan.description"),
+      body: "cashflow",
+      eyebrow: t("onboarding.slides.cashflow.eyebrow"),
+      title: t("onboarding.slides.cashflow.title"),
+      description: t("onboarding.slides.cashflow.description"),
     },
     {
-      body: "profile",
-      eyebrow: t("onboarding.slides.share.eyebrow"),
-      title: t("onboarding.slides.share.title"),
-      description: t("onboarding.slides.share.description"),
+      body: "growth",
+      eyebrow: t("onboarding.slides.growth.eyebrow"),
+      title: t("onboarding.slides.growth.title"),
+      description: t("onboarding.slides.growth.description"),
     },
   ];
   const slideCount = slides.length;

@@ -135,6 +135,7 @@ export type CashflowAnalytics = {
 
 export type CashflowDataState = {
   isReady: boolean;
+  isSwitchingManagement: boolean;
   activeManagementId: string | null;
   activeManagement: CashflowManagement | null;
   managements: CashflowManagement[];
@@ -153,7 +154,7 @@ export type CashflowDataState = {
   updateManagement: (managementId: string, input: UpdateManagementInput) => Promise<void>;
   deleteManagement: (managementId: string) => Promise<void>;
   listManagementMembers: (managementId: string) => Promise<CashflowManagementMember[]>;
-  createCategory: (input: CreateCategoryInput) => Promise<void>;
+  createCategory: (input: CreateCategoryInput) => Promise<string | null>;
   updateCategory: (categoryId: string, input: UpdateCategoryInput) => Promise<void>;
   deleteCategory: (id: string) => Promise<void>;
   updateOverallBudget: (period: BudgetPeriod, nominal: number | null) => Promise<void>;
