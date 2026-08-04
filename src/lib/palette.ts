@@ -1,5 +1,5 @@
 import { getColors, type ImageColorsResult } from "react-native-image-colors";
-import type { ThemeSet } from "@/components/AppTheme";
+import type { ThemeSet } from "@/components/provider/AppTheme";
 
 export type ExtractedColors = {
   primary: string;

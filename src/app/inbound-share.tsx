@@ -6,9 +6,9 @@ import { router, Stack } from "expo-router";
 import { useIncomingShare, type ResolvedSharePayload } from "expo-sharing";
 
 import { AppText } from "@/components/AppText";
-import { useAppTheme } from "@/components/AppTheme";
-import { useAuth } from "@/components/AuthProvider";
-import { useCurrency } from "@/components/CurrencyProvider";
+import { useAppTheme } from "@/components/provider/AppTheme";
+import { useAuth } from "@/components/provider/AuthProvider";
+import { useCurrency } from "@/components/provider/CurrencyProvider";
 import { useCashflowData } from "@/data/cashflow/CashflowDataProvider";
 import { alpha } from "@/lib/color";
 import { toDateKey } from "@/lib/date";

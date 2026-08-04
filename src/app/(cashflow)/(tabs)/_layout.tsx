@@ -1,5 +1,5 @@
 import { NativeTabs } from "expo-router/unstable-native-tabs";
-import { useAppTheme } from "@/components/AppTheme";
+import { useAppTheme } from "@/components/provider/AppTheme";
 import { alpha } from "@/lib/color";
 import { Platform } from "react-native";
 import { useTranslation } from "react-i18next";

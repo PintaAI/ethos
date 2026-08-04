@@ -13,14 +13,14 @@ import Animated, {
   type SharedValue,
 } from "react-native-reanimated";
 import { AppText as Text } from "@/components/AppText";
-import { useAppTheme } from "@/components/AppTheme";
-import { useAuth } from "@/components/AuthProvider";
+import { useAppTheme } from "@/components/provider/AppTheme";
+import { useAuth } from "@/components/provider/AuthProvider";
 import { alpha } from "@/lib/color";
 import { ActivityHeatmap } from "@/components/cashflow/ActivityHeatmap";
 import { CashflowStatsCard } from "@/components/cashflow/CashflowStatsCard";
 import { CashflowTable } from "@/components/cashflow/CashflowTable";
 import { AppSymbol } from "@/components/AppSymbol";
-import { PersonalGrowthHomeContent } from "@/components/selfImprovement/PersonalGrowthHomeContent";
+import { LifeFlowHomeContent } from "@/components/lifeflow/LifeFlowHomeContent";
 import {
   sampleActivity,
   sampleDayEntries,
@@ -29,14 +29,14 @@ import {
   sampleStats,
 } from "@/data/cashflow/sampleData";
 import {
-  samplePersonalGrowthDate,
-  samplePersonalGrowthHabitLogs,
-  samplePersonalGrowthHabits,
-  samplePersonalGrowthNotes,
-  samplePersonalGrowthTimeBoxes,
-} from "@/data/selfImprovement/sampleData";
+  sampleLifeFlowDate,
+  sampleLifeFlowHabitLogs,
+  sampleLifeFlowHabits,
+  sampleLifeFlowNotes,
+  sampleLifeFlowTimeBoxes,
+} from "@/data/lifeflow/sampleData";
 
-type PreviewTabKey = "system" | "cashflow" | "growth";
+type PreviewTabKey = "system" | "cashflow" | "lifeFlow";
 
 type OnboardingSlide = {
   body: PreviewTabKey;
@@ -80,8 +80,8 @@ function SystemPreviewBody() {
       icon: "banknote.fill" as const,
     },
     {
-      label: t("onboarding.preview.personalGrowth"),
-      detail: t("onboarding.preview.personalGrowthDetail"),
+      label: t("onboarding.preview.lifeFlow"),
+      detail: t("onboarding.preview.lifeFlowDetail"),
       icon: "sparkles" as const,
     },
   ];
@@ -161,14 +161,14 @@ function CashflowPreviewBody() {
   );
 }
 
-function GrowthPreviewBody() {
+function LifeFlowPreviewBody() {
   return (
-    <PersonalGrowthHomeContent
-      notes={samplePersonalGrowthNotes}
-      habits={samplePersonalGrowthHabits}
-      habitLogs={samplePersonalGrowthHabitLogs}
-      timeBoxes={samplePersonalGrowthTimeBoxes}
-      referenceDate={samplePersonalGrowthDate}
+    <LifeFlowHomeContent
+      notes={sampleLifeFlowNotes}
+      habits={sampleLifeFlowHabits}
+      habitLogs={sampleLifeFlowHabitLogs}
+      timeBoxes={sampleLifeFlowTimeBoxes}
+      referenceDate={sampleLifeFlowDate}
       onOpenJournal={() => {}}
       onOpenHabits={() => {}}
       onOpenSchedule={() => {}}
@@ -182,7 +182,7 @@ function GrowthPreviewBody() {
 function SlidePreview({ body }: { body: PreviewTabKey }) {
   return (
     <View style={{ flex: 1 }} pointerEvents="none">
-      {body === "system" ? <SystemPreviewBody /> : body === "cashflow" ? <CashflowPreviewBody /> : <GrowthPreviewBody />}
+      {body === "system" ? <SystemPreviewBody /> : body === "cashflow" ? <CashflowPreviewBody /> : <LifeFlowPreviewBody />}
     </View>
   );
 }
@@ -211,10 +211,10 @@ export default function OnboardingScreen() {
       description: t("onboarding.slides.cashflow.description"),
     },
     {
-      body: "growth",
-      eyebrow: t("onboarding.slides.growth.eyebrow"),
-      title: t("onboarding.slides.growth.title"),
-      description: t("onboarding.slides.growth.description"),
+      body: "lifeFlow",
+      eyebrow: t("onboarding.slides.lifeFlow.eyebrow"),
+      title: t("onboarding.slides.lifeFlow.title"),
+      description: t("onboarding.slides.lifeFlow.description"),
     },
   ];
   const slideCount = slides.length;

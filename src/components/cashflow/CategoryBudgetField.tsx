@@ -3,8 +3,8 @@ import { Pressable, TextInput, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { AppSymbol } from "@/components/AppSymbol";
 import { AppText as Text } from "@/components/AppText";
-import { useAppTheme } from "@/components/AppTheme";
-import { useCurrency } from "@/components/CurrencyProvider";
+import { useAppTheme } from "@/components/provider/AppTheme";
+import { useCurrency } from "@/components/provider/CurrencyProvider";
 
 export function formatBudgetInput(value: number | null) {
   return value ? String(value).replace(/\B(?=(\d{3})+(?!\d))/g, ".") : "";

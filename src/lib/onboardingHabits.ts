@@ -1,4 +1,4 @@
-import type { Habit } from "@/data/selfImprovement/types";
+import type { Habit } from "@/data/lifeflow/types";
 
 export type OnboardingHabitDraft = { name: string; weekdays: number[]; color: string; preferredDuration: number };
 

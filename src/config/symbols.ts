@@ -73,6 +73,7 @@ const androidSymbols = {
   "hand.wave": "waving_hand",
   envelope: "mail",
   "pencil.circle.fill": "edit",
+  "square.and.pencil": "edit",
   "trash.fill": "delete",
   "checkmark.circle.fill": "check_circle",
   "calendar.badge.clock": "event_repeat",

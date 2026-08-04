@@ -3,7 +3,7 @@ import { Platform, Pressable, View } from "react-native";
 import { Stack } from "expo-router";
 import { useTranslation } from "react-i18next";
 import { AppText as Text } from "@/components/AppText";
-import { useAppTheme } from "@/components/AppTheme";
+import { useAppTheme } from "@/components/provider/AppTheme";
 
 function StepperSlider({
   label,

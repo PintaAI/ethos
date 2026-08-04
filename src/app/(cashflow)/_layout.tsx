@@ -55,7 +55,6 @@ const categoryEntriesOptions = Platform.OS === "ios"
   : androidSheetOptions([0.5, 1]);
 const transferOptions = Platform.OS === "ios" ? formSheetOptions : androidSheetOptions([0.68, 1]);
 const reminderOptions = Platform.OS === "ios" ? formSheetOptions : androidSheetOptions([0.7, 1]);
-const statieOptions = Platform.OS === "ios" ? formSheetOptions : androidSheetOptions("fitToContents");
 const auditOptions = Platform.OS === "ios" ? formSheetOptions : androidSheetOptions([0.68, 1]);
 const automaticEntryOptions = Platform.OS === "ios" ? formSheetOptions : androidSheetOptions([1]);
 const quickFillOptions = Platform.OS === "ios" ? formSheetOptions : androidSheetOptions([1]);
@@ -79,7 +78,6 @@ export default function CashflowLayout() {
         <Stack.Screen name="forms/category-entries" options={categoryEntriesOptions} />
         <Stack.Screen name="forms/transfer" options={transferOptions} />
         <Stack.Screen name="forms/reminder" options={reminderOptions} />
-        <Stack.Screen name="forms/statie" options={statieOptions} />
         <Stack.Screen name="forms/audit" options={auditOptions} />
         <Stack.Screen name="forms/automatic-entry" options={automaticEntryOptions} />
         <Stack.Screen name="forms/quick-fill" options={quickFillOptions} />

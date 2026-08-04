@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { router, type Href } from "expo-router";
 import { AppText as Text } from "@/components/AppText";
-import { useAppTheme } from "@/components/AppTheme";
+import { useAppTheme } from "@/components/provider/AppTheme";
 import { getPreference } from "@/lib/preferences";
 
 export default function Home() {

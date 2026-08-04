@@ -2,7 +2,7 @@ import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
 
 import i18n from "@/i18n";
-import type { TimeBox } from "@/data/selfImprovement/types";
+import type { TimeBox } from "@/data/lifeflow/types";
 import { parseDateKey } from "@/lib/date";
 import {
   DEFAULT_NOTIFICATION_CHANNEL_ID,

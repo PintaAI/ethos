@@ -7,7 +7,7 @@ import ReanimatedSwipeable, { type SwipeableMethods } from "react-native-gesture
 
 import { AppSymbol } from "@/components/AppSymbol";
 import { AppText as Text } from "@/components/AppText";
-import { useAppTheme } from "@/components/AppTheme";
+import { useAppTheme } from "@/components/provider/AppTheme";
 import { NoteIcon } from "@/components/notes/NoteIcon";
 import type { CachedNote } from "@/data/notes/types";
 import { alpha, mix } from "@/lib/color";

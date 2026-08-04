@@ -8,7 +8,7 @@ import { GlassBox } from "@/components/GlassBox";
 import { useTranslation } from "react-i18next";
 import { AppText as Text } from "@/components/AppText";
 import { AndroidFormFooter, AndroidFormFooterButton } from "@/components/AndroidFormFooter";
-import { useAppTheme } from "@/components/AppTheme";
+import { useAppTheme } from "@/components/provider/AppTheme";
 import { IconSelector } from "@/components/IconSelector";
 import { useCashflowData } from "@/data/cashflow/CashflowDataProvider";
 import type { CashflowManagementMember } from "@/data/cashflow/types";

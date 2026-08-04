@@ -6,13 +6,13 @@ import { Pressable, ScrollView, Switch, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { AppSymbol } from "@/components/AppSymbol";
 import { AppText as Text } from "@/components/AppText";
-import { useAppTheme } from "@/components/AppTheme";
-import { useCurrency } from "@/components/CurrencyProvider";
+import { useAppTheme } from "@/components/provider/AppTheme";
+import { useCurrency } from "@/components/provider/CurrencyProvider";
 import { ProfileHeader } from "@/components/profile/ProfileHeader";
 import { APP_VERSION } from "@/config/app";
 import { alpha } from "@/lib/color";
 import { SUPPORTED_CURRENCIES } from "@/lib/currency";
-import { useIslandToast } from "@/components/IslandToast";
+import { useIslandToast } from "@/components/provider/IslandToast";
 
 export type ProfileContentBodyProps = {
   isAuthenticated: boolean;

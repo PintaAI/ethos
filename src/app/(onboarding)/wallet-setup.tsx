@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { AppSymbol } from "@/components/AppSymbol";
 import { AppText as Text } from "@/components/AppText";
-import { useAppTheme, type ThemeSet } from "@/components/AppTheme";
+import { useAppTheme, type ThemeSet } from "@/components/provider/AppTheme";
 import { GlassBox } from "@/components/GlassBox";
 import { useCashflowData } from "@/data/cashflow/CashflowDataProvider";
 import { walletImageToIcon } from "@/lib/categoryMapping";
@@ -180,7 +180,7 @@ export default function WalletSetup() {
   function continueSetup() {
     if (saving || (mode !== "cloud" && mode !== "offline")) return;
     if ((existing && !hasChanges) || (!existing && !name.trim() && cashflow.managements.length > 0)) {
-      router.push({ pathname: "/(onboarding)/growth-setup", params: { mode } } as unknown as Href);
+      router.push({ pathname: "/(onboarding)/lifeflow-setup", params: { mode } } as unknown as Href);
       return;
     }
     void commit("continue");
@@ -249,7 +249,7 @@ export default function WalletSetup() {
       if (selectedThemeSlug) appTheme.setTheme(selectedThemeSlug);
       if ((persistedUri || removeImage) && existing?.image !== persistedUri) deleteOwnedWalletImage(existing?.image);
       if (action === "continue") {
-        router.push({ pathname: "/(onboarding)/growth-setup", params: { mode } } as unknown as Href);
+        router.push({ pathname: "/(onboarding)/lifeflow-setup", params: { mode } } as unknown as Href);
       } else {
         setCreatingAnother(false);
         setName(name.trim());

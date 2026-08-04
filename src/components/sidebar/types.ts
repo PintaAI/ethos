@@ -1,7 +1,7 @@
 import type { Href } from "expo-router";
 import type { SFSymbol } from "expo-symbols";
 
-export type AppArea = "cashflow" | "self-improvement";
+export type AppArea = "cashflow" | "lifeflow";
 
 export type SidebarItem = {
   id: string;

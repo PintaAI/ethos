@@ -47,24 +47,24 @@ function buildCashflowSection(t: TFunction): SidebarSection {
   };
 }
 
-function buildPersonalGrowthSection(notes: CachedNote[], t: TFunction): SidebarSection {
+function buildLifeFlowSection(notes: CachedNote[], t: TFunction): SidebarSection {
   return {
-    label: t("sidebar.personalGrowth"),
-    area: "self-improvement",
+    label: t("sidebar.lifeFlow"),
+    area: "lifeflow",
     items: [
       {
-        id: "personal-growth-home",
-        label: t("sidebar.growthHome"),
+        id: "lifeflow-home",
+        label: t("sidebar.lifeFlowHome"),
         icon: "house.fill",
-        route: "/(self-improvement)/(tabs)/overview" as Href,
-        activePaths: ["/overview"],
+        route: "/(lifeflow)/(tabs)/home" as Href,
+        activePaths: ["/home"],
         replace: true,
       },
       {
-        id: "personal-growth-journal",
+        id: "lifeflow-journal",
         label: t("sidebar.journal"),
         icon: "book.pages.fill",
-        route: "/(self-improvement)/(tabs)/journal" as Href,
+        route: "/(lifeflow)/(tabs)/journal" as Href,
         activePaths: ["/journal/*"],
         replace: true,
         children: notes
@@ -74,7 +74,7 @@ function buildPersonalGrowthSection(notes: CachedNote[], t: TFunction): SidebarS
             label: note.title || t("sidebar.journal"),
             icon: "pin.fill",
             route: {
-              pathname: "/(self-improvement)/(tabs)/journal/detail",
+              pathname: "/(lifeflow)/(tabs)/journal/detail",
               params: { id: note.id },
             } as Href,
             withAnchor: true,
@@ -82,18 +82,18 @@ function buildPersonalGrowthSection(notes: CachedNote[], t: TFunction): SidebarS
           })),
       },
       {
-        id: "personal-growth-habits",
+        id: "lifeflow-habits",
         label: t("sidebar.habits"),
         icon: "checkmark.circle.fill",
-        route: "/(self-improvement)/(tabs)/habits" as Href,
+        route: "/(lifeflow)/(tabs)/habits" as Href,
         activePaths: ["/habits"],
         replace: true,
       },
       {
-        id: "personal-growth-schedule",
+        id: "lifeflow-schedule",
         label: t("sidebar.schedule"),
         icon: "calendar.circle.fill",
-        route: "/(self-improvement)/(tabs)/schedule" as Href,
+        route: "/(lifeflow)/(tabs)/schedule" as Href,
         activePaths: ["/schedule"],
         replace: true,
       },
@@ -102,5 +102,5 @@ function buildPersonalGrowthSection(notes: CachedNote[], t: TFunction): SidebarS
 }
 
 export function buildSidebarSections(notes: CachedNote[], t: TFunction): SidebarSection[] {
-  return [buildCashflowSection(t), buildPersonalGrowthSection(notes, t)];
+  return [buildCashflowSection(t), buildLifeFlowSection(notes, t)];
 }

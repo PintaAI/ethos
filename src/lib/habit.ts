@@ -1,4 +1,4 @@
-import type { Habit } from "@/data/selfImprovement/types";
+import type { Habit } from "@/data/lifeflow/types";
 
 export const ALL_HABIT_WEEKDAYS = [0, 1, 2, 3, 4, 5, 6];
 

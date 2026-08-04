@@ -7,9 +7,9 @@ import { useTranslation } from "react-i18next";
 
 import { AppText as Text } from "@/components/AppText";
 import { AndroidFormFooter, AndroidFormFooterButton } from "@/components/AndroidFormFooter";
-import { useAppTheme } from "@/components/AppTheme";
-import { useCurrency } from "@/components/CurrencyProvider";
-import { useSyncStatus } from "@/components/SyncProvider";
+import { useAppTheme } from "@/components/provider/AppTheme";
+import { useCurrency } from "@/components/provider/CurrencyProvider";
+import { useSyncStatus } from "@/components/provider/SyncProvider";
 import { useCashflowData } from "@/data/cashflow/CashflowDataProvider";
 import { alpha } from "@/lib/color";
 import { getAuditBalance, getLatestAudit, performAudit, type AuditSnapshot } from "@/lib/api/audit";

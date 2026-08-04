@@ -1,8 +1,8 @@
 import { createContext, use, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useSQLiteContext } from "expo-sqlite";
 
-import { useAuth } from "@/components/AuthProvider";
-import { useSelfImprovement } from "@/data/selfImprovement/SelfImprovementProvider";
+import { useAuth } from "@/components/provider/AuthProvider";
+import { useLifeFlow } from "@/data/lifeflow/LifeFlowProvider";
 import { ApiError } from "@/lib/api/client";
 import { toDateKey } from "@/lib/date";
 import { DbOperationInvalidatedError, getDbLockGeneration, withDbLock } from "@/lib/sync/dbLock";
@@ -65,7 +65,7 @@ function errorMessage(error: unknown): string {
 export function NotesDataProvider({ children }: { children: ReactNode }) {
   const db = useSQLiteContext();
   const { user, isAuthenticated, isPending } = useAuth();
-  const { recordJournalActivity } = useSelfImprovement();
+  const { recordJournalActivity } = useLifeFlow();
   const userId = user?.id ?? null;
   const recordedJournalDateRef = useRef<string | null>(null);
   const authScopeRef = useRef({ userId, generation: getDbLockGeneration() });

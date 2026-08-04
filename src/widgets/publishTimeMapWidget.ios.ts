@@ -1,4 +1,4 @@
-import { getTimeBoxColor } from "@/components/selfImprovement/TimeMapDial";
+import { getTimeBoxColor } from "@/components/lifeflow/TimeMapDial";
 import { timeToMinutes } from "@/lib/timeBox";
 import EthosTimeMapWidget, {
   type TimeMapWidgetAvailableRange,

@@ -2,7 +2,7 @@ import { ActivityIndicator, Pressable, View } from "react-native";
 import { Image, type ImageSource } from "expo-image";
 import { AppSymbol } from "@/components/AppSymbol";
 import { AppText as RNText } from "@/components/AppText";
-import { useAppTheme } from "@/components/AppTheme";
+import { useAppTheme } from "@/components/provider/AppTheme";
 
 type ProfileHeaderProps = {
   avatarSource: ImageSource | null;

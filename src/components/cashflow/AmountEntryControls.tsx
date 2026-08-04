@@ -1,7 +1,7 @@
 import { Pressable, TextInput, View } from "react-native";
 
 import { AppText as Text } from "@/components/AppText";
-import { useAppTheme } from "@/components/AppTheme";
+import { useAppTheme } from "@/components/provider/AppTheme";
 
 const DENOMINATION_COLORS = ["#6b7280", "#64748b", "#a16207", "#9333ea", "#2563eb", "#dc2626", "#16a34a"];
 

@@ -6,7 +6,7 @@ import { router, Stack, useLocalSearchParams, type Href } from "expo-router";
 import { toolbarIcons } from "@/config/toolbarIcons";
 import { useTranslation } from "react-i18next";
 import { AppText } from "@/components/AppText";
-import { useAppTheme } from "@/components/AppTheme";
+import { useAppTheme } from "@/components/provider/AppTheme";
 import { AndroidFormFooter, AndroidFormFooterButton } from "@/components/AndroidFormFooter";
 import { authClient } from "@/lib/auth-client";
 

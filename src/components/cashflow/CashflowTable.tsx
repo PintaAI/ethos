@@ -8,14 +8,14 @@ import { AppSymbol } from "@/components/AppSymbol";
 import { useTranslation } from "react-i18next";
 import i18n from "@/i18n";
 import { AppText as RNText } from "@/components/AppText";
-import { useAppTheme } from "@/components/AppTheme";
-import { useCurrency } from "@/components/CurrencyProvider";
+import { useAppTheme } from "@/components/provider/AppTheme";
+import { useCurrency } from "@/components/provider/CurrencyProvider";
 import { alpha, mix } from "@/lib/color";
 import { localizeCategoryName } from "@/lib/categoryNames";
 import { formatEntryAmount } from "@/lib/currency";
 import { addDaysToDateKey, formatDateKey, localeFromLanguage, parseDateKey } from "@/lib/date";
 import { useCashflowData } from "@/data/cashflow/CashflowDataProvider";
-import { useSyncStatus } from "@/components/SyncProvider";
+import { useSyncStatus } from "@/components/provider/SyncProvider";
 
 export type IOType = "Income" | "Expenses";
 

@@ -20,12 +20,12 @@ import {
   tint,
 } from "@expo/ui/swift-ui/modifiers";
 import { APP_VERSION } from "@/config/app";
-import { useAppTheme, type ThemeName } from "@/components/AppTheme";
-import { useCurrency } from "@/components/CurrencyProvider";
+import { useAppTheme, type ThemeName } from "@/components/provider/AppTheme";
+import { useCurrency } from "@/components/provider/CurrencyProvider";
 import { ProfileHeader } from "@/components/profile/ProfileHeader";
 import { alpha } from "@/lib/color";
 import { SUPPORTED_CURRENCIES } from "@/lib/currency";
-import { useIslandToast } from "@/components/IslandToast";
+import { useIslandToast } from "@/components/provider/IslandToast";
 
 const SETTINGS_ICON_SIZE = 15;
 

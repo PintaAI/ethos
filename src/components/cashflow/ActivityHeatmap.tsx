@@ -6,7 +6,7 @@ import { GlassBox } from "@/components/GlassBox";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { runOnJS } from "react-native-reanimated";
 import { AppText as RNText } from "@/components/AppText";
-import { useAppTheme } from "@/components/AppTheme";
+import { useAppTheme } from "@/components/provider/AppTheme";
 import { alpha } from "@/lib/color";
 import { formatLocalizedDate, localeFromLanguage, parseDateKey, toDateKey } from "@/lib/date";
 import { getPreference, setPreference } from "@/lib/preferences";

@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import type { ThemeSet } from "@/components/AppTheme";
+import type { ThemeSet } from "@/components/provider/AppTheme";
 
 export type StoredTheme = ThemeSet & {
   slug: string;

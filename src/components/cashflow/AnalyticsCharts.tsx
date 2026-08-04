@@ -5,9 +5,9 @@ import type { SFSymbol } from "expo-symbols";
 import Svg, { Circle, G } from "react-native-svg";
 import { AppText as RNText } from "@/components/AppText";
 import { AppSymbol } from "@/components/AppSymbol";
-import { useAppTheme } from "@/components/AppTheme";
+import { useAppTheme } from "@/components/provider/AppTheme";
 import { useTranslation } from "react-i18next";
-import { useCurrency } from "@/components/CurrencyProvider";
+import { useCurrency } from "@/components/provider/CurrencyProvider";
 import { AppSegmentedControl } from "@/components/AppSegmentedControl";
 
 import { alpha } from "@/lib/color";

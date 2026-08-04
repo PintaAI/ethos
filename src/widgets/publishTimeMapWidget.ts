@@ -1,4 +1,4 @@
-import type { TimeBox } from "@/data/selfImprovement/types";
+import type { TimeBox } from "@/data/lifeflow/types";
 
 export type PublishTimeMapWidgetInput = {
   date: string;

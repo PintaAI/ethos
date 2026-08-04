@@ -15,7 +15,7 @@ import Animated, {
 
 import { AppText as Text } from "@/components/AppText";
 import { AppSymbol } from "@/components/AppSymbol";
-import { useAppTheme } from "@/components/AppTheme";
+import { useAppTheme } from "@/components/provider/AppTheme";
 import { alpha } from "@/lib/color";
 import { localizeCategoryName } from "@/lib/categoryNames";
 

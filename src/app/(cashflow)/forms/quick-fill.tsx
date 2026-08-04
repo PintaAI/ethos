@@ -9,12 +9,12 @@ import { useTranslation } from "react-i18next";
 
 import { AppText as Text } from "@/components/AppText";
 import { AndroidFormFooter, AndroidFormFooterButton } from "@/components/AndroidFormFooter";
-import { useAppTheme } from "@/components/AppTheme";
+import { useAppTheme } from "@/components/provider/AppTheme";
 import { CashflowAmountInput, QuickAmountStrip } from "@/components/cashflow/AmountEntryControls";
 import { CategorySlider } from "@/components/cashflow/CategorySlider";
 import { loadCategorySliderFeedback, playCategorySliderFeedback } from "@/components/cashflow/categorySliderFeedback";
 import { useCashflowCategorySlider } from "@/components/cashflow/useCashflowCategorySlider";
-import { useCurrency } from "@/components/CurrencyProvider";
+import { useCurrency } from "@/components/provider/CurrencyProvider";
 import { useCashflowData } from "@/data/cashflow/CashflowDataProvider";
 import { alpha } from "@/lib/color";
 

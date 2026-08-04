@@ -5,7 +5,7 @@ import {
   Text,
 } from "@expo/ui/jetpack-compose";
 import { alpha } from "@/lib/color";
-import { useAppTheme } from "@/components/AppTheme";
+import { useAppTheme } from "@/components/provider/AppTheme";
 import type { AppSegmentedControlProps } from "./AppSegmentedControl";
 
 export function AppSegmentedControl({ values, selectedIndex, onIndexChange, style }: AppSegmentedControlProps) {

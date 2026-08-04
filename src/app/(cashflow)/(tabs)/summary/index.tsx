@@ -2,7 +2,7 @@ import { router, Stack, useLocalSearchParams } from "expo-router";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toolbarIcons } from "@/config/toolbarIcons";
-import { useDrawer } from "@/components/DrawerContext";
+import { useDrawer } from "@/components/provider/DrawerContext";
 import { AnalyticsCharts, DATE_PRESETS, type DatePeriod } from "@/components/cashflow/AnalyticsCharts";
 import { CashflowStatsCard } from "@/components/cashflow/CashflowStatsCard";
 import { useCashflowData } from "@/data/cashflow/CashflowDataProvider";

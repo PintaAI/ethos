@@ -56,8 +56,8 @@ const en = {
     menu: "Menu",
     cashflow: "Cashflow",
     cashflowHome: "Cashflow Home",
-    personalGrowth: "Personal Growth",
-    growthHome: "Growth Home",
+    lifeFlow: "LifeFlow",
+    lifeFlowHome: "LifeFlow Home",
     journal: "Journal",
     wallet: "Wallet",
     transfer: "Transfer",
@@ -69,7 +69,7 @@ const en = {
     habits: "Habits",
     schedule: "Schedule",
   },
-  selfImprovementHome: {
+  lifeFlowHome: {
     title: "Home",
     dailyRhythm: "Today's rhythm",
     complete: "{{completed}} of {{total}} complete",
@@ -664,16 +664,6 @@ const en = {
     monthlyReviewNotificationTitle: "Monthly review is ready",
     monthlyReviewNotificationBody: "See how your finances looked last month.",
   },
-  statie: {
-    title: "Statie",
-    description: "Mock game setup sheet for the Statie nav item.",
-    fieldPlayer: "Player name",
-    fieldMode: "Mode",
-    fieldDifficulty: "Difficulty",
-  },
-  sidebarForm: {
-    placeholder: "Placeholder input",
-  },
   notes: {
     home: "Journal Home",
     notes: "Journal",
@@ -684,7 +674,7 @@ const en = {
     private: "private",
     shared: "shared",
     newTitle: "New journal entry title",
-    create: "Create entry",
+    create: "Write",
     createFailed: "Could not create journal entry",
     tryAgain: "Please try again.",
     filterAll: "All",
@@ -798,7 +788,7 @@ const en = {
         title: "Know where your money goes.",
         description: "Record income and spending as it happens, then understand your balance and patterns without a spreadsheet.",
       },
-      growth: {
+      lifeFlow: {
         eyebrow: "BUILD YOUR DAILY RHYTHM",
         title: "Plan, act, and reflect.",
         description: "Plan time with Schedule, stay consistent with Habits, and use Journal to reflect on the life you are building.",
@@ -809,8 +799,8 @@ const en = {
       systemTitle: "Two focused spaces. One organized life.",
       cashflow: "Cashflow",
       cashflowDetail: "Money, budgets, and trends",
-      personalGrowth: "Personal Growth",
-      personalGrowthDetail: "Journal, habits, and schedule",
+      lifeFlow: "LifeFlow",
+      lifeFlowDetail: "Journal, habits, and schedule",
       plan: "Plan",
       act: "Act",
       reflect: "Reflect",
@@ -826,8 +816,8 @@ const en = {
     imagePreview: "Wallet image preview", choose: "Choose image", replace: "Replace", removeImage: "Remove image", manageImage: "Manage wallet image", palettePreview: "Theme preview", addAnother: "Add new wallet", saveChanges: "Save changes", saveWallet: "Save wallet", availableWallets: "Your wallets", active: "Active", presets: "Choose a wallet style", presetLabel: "Wallet style {{number}}",
     imageErrorTitle: "Image unavailable", saveErrorTitle: "Could not save wallet", saveError: "Try again without leaving this screen.", switchErrorTitle: "Could not switch wallet", switchError: "Try selecting the wallet again.", activateWallet: "Use {{name}} as the active wallet", makeActive: "Use",
   },
-  growthSetup: {
-    title: "Personal Growth", heading: "Build one tiny habit", description: "Inspired by the idea of making habits small and repeatable. Ethos is not affiliated with Atomic Habits.", skip: "Skip for now",
+  lifeFlowSetup: {
+    title: "LifeFlow", heading: "Build one tiny habit", description: "Inspired by the idea of making habits small and repeatable. Ethos is not affiliated with Atomic Habits.", skip: "Skip for now",
     habitName: "1. Name your habit", tinyHabit: "2. Make it tiny", habitPlaceholder: "A habit you want to build", rhythm: "3. Choose your rhythm", color: "4. Make a commitment", chooseColor: "Choose color {{color}}",
     durationMinute: "1 minute", durationMinutes: "{{minutes}} minutes", durationHour: "1 hour",
     recurrence: { daily: "Every day", weekdays: "Weekdays", weekends: "Weekends", custom: "Custom days" },

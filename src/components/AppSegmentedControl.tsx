@@ -1,6 +1,6 @@
 import { SegmentedControl } from "@expo/ui/community/segmented-control";
 import type { StyleProp, ViewStyle } from "react-native";
-import { useAppTheme } from "@/components/AppTheme";
+import { useAppTheme } from "@/components/provider/AppTheme";
 
 export type AppSegmentedControlProps = {
   values: string[];

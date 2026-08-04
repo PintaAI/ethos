@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { NativeTabs } from "expo-router/unstable-native-tabs";
-import { useAppTheme } from "./AppTheme";
+import { useAppTheme } from "@/components/provider/AppTheme";
 
 export default function AppTabs() {
   const appTheme = useAppTheme();

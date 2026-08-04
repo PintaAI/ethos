@@ -1,19 +1,16 @@
-import { useMemo, useState } from "react";
-import { Platform, Pressable, RefreshControl, View } from "react-native";
+import { useState } from "react";
+import { Platform, Pressable } from "react-native";
 import { AppText as RNText } from "@/components/AppText";
 import { router, Stack, type Href } from "expo-router";
 import { AppSymbol } from "@/components/AppSymbol";
 import { GlassBox } from "@/components/GlassBox";
 import { useTranslation } from "react-i18next";
 
-import { useDrawer } from "@/components/DrawerContext";
-import { useAppTheme } from "@/components/AppTheme";
+import { CashflowHomeContent } from "@/components/cashflow/CashflowHomeContent";
+import { useDrawer } from "@/components/provider/DrawerContext";
+import { useAppTheme } from "@/components/provider/AppTheme";
 import { toolbarIcons } from "@/config/toolbarIcons";
 import { alpha } from "@/lib/color";
-import { ActivityHeatmap } from "@/components/cashflow/ActivityHeatmap";
-import { CashflowTable } from "@/components/cashflow/CashflowTable";
-import { CashflowStatsCard } from "@/components/cashflow/CashflowStatsCard";
-import { useSyncStatus } from "@/components/SyncProvider";
 import { useCashflowData } from "@/data/cashflow/CashflowDataProvider";
 import { toDateKey } from "@/lib/date";
 
@@ -21,24 +18,10 @@ export default function HomeScreen() {
   const { t } = useTranslation();
   const { open } = useDrawer();
   const appTheme = useAppTheme();
-  const sync = useSyncStatus();
   const { activity, entries, stats, activeManagement, isSwitchingManagement } = useCashflowData();
   const latestDate = activity.days.at(-1)?.date ?? toDateKey(new Date());
   const [selectedDate, setSelectedDate] = useState(latestDate);
   const effectiveSelectedDate = activity.days.some((day) => day.date === selectedDate) ? selectedDate : latestDate;
-
-  const dayEntries = useMemo(
-    () => entries.filter((e) => e.date === effectiveSelectedDate),
-    [effectiveSelectedDate, entries],
-  );
-
-  const homeHeader = useMemo(() => (
-    <View>
-      <CashflowStatsCard stats={stats} managementName={activeManagement?.name} loading={isSwitchingManagement} />
-      <ActivityHeatmap activity={activity} selectedDate={effectiveSelectedDate} onDateSelect={setSelectedDate} />
-      <View className="mt-5" />
-    </View>
-  ), [stats, activeManagement?.name, activity, effectiveSelectedDate, isSwitchingManagement]);
 
   return (
     <>
@@ -88,24 +71,15 @@ export default function HomeScreen() {
           )}
         </Stack.Toolbar.View>
       </Stack.Toolbar>
-      <View className="bg-[--app-color-background] flex-1">
-        <CashflowTable
-          entries={dayEntries}
-          dateFilter={effectiveSelectedDate}
-          onDateFilterChange={setSelectedDate}
-          hideTanggal
-          ListHeaderComponent={homeHeader}
-          refreshControl={
-            <RefreshControl
-              refreshing={sync.status === "syncing"}
-              onRefresh={() => void sync.syncNow()}
-              tintColor={appTheme.colors.primary}
-              colors={[appTheme.colors.primary]}
-              progressBackgroundColor={appTheme.colors.background}
-            />
-          }
-        />
-      </View>
+      <CashflowHomeContent
+        entries={entries}
+        activity={activity}
+        stats={stats}
+        activeManagementName={activeManagement?.name ?? undefined}
+        isSwitchingManagement={isSwitchingManagement}
+        selectedDate={effectiveSelectedDate}
+        onDateFilterChange={setSelectedDate}
+      />
     </>
   );
 }

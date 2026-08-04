@@ -11,21 +11,21 @@ import { AppSymbol } from "@/components/AppSymbol";
 import { GlassBox } from "@/components/GlassBox";
 import { useTranslation } from "react-i18next";
 import i18n from "@/i18n";
-import { useAppTheme } from "@/components/AppTheme";
+import { useAppTheme } from "@/components/provider/AppTheme";
 import { CashflowAmountInput, QuickAmountStrip } from "@/components/cashflow/AmountEntryControls";
 import { CategorySlider } from "@/components/cashflow/CategorySlider";
 import { loadCategorySliderFeedback, playCategorySliderFeedback } from "@/components/cashflow/categorySliderFeedback";
 import { useCashflowCategorySlider } from "@/components/cashflow/useCashflowCategorySlider";
-import { useCurrency } from "@/components/CurrencyProvider";
+import { useCurrency } from "@/components/provider/CurrencyProvider";
 import { useCashflowData } from "@/data/cashflow/CashflowDataProvider";
 import { rankCategories, suggestCategoryFromNote, type CategoryHistoryItem } from "@/data/cashflow/categorySuggestions";
 import { listCategoryHistory } from "@/data/cashflow/repository";
 import { withDbLock } from "@/lib/sync/dbLock";
-import { useAuth } from "@/components/AuthProvider";
+import { useAuth } from "@/components/provider/AuthProvider";
 import { useSQLiteContext } from "expo-sqlite";
 import { alpha } from "@/lib/color";
 import { toDateKey, parseDateKey } from "@/lib/date";
-import { useIslandToast } from "@/components/IslandToast";
+import { useIslandToast } from "@/components/provider/IslandToast";
 
 function FormSymbol({ name, color, size = 16 }: { name: SFSymbol; color: string; size?: number }) {
   return <AppSymbol name={name} size={size} tintColor={color} fallback={<Text style={{ color }}>•</Text>} />;

@@ -2,7 +2,7 @@ import { Pressable, ScrollView, View } from "react-native";
 import type { SFSymbol } from "expo-symbols";
 import { AppSymbol } from "@/components/AppSymbol";
 import { AppText as Text } from "@/components/AppText";
-import { useAppTheme } from "@/components/AppTheme";
+import { useAppTheme } from "@/components/provider/AppTheme";
 import { alpha } from "@/lib/color";
 
 type IconSelectorProps = {

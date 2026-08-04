@@ -2,7 +2,7 @@ import { useCallback, useEffect, useEffectEvent, useImperativeHandle, useRef } f
 import { View } from "react-native";
 import { BlockNoteView, useCreateBlockNote } from "blocknote-native-editor";
 
-import { useAppTheme } from "@/components/AppTheme";
+import { useAppTheme } from "@/components/provider/AppTheme";
 import { parseNativeNoteContent } from "./nativeContent";
 import type { HeadingLevel, MediaBlockType, NoteEditorProps } from "./NoteEditor.types";
 

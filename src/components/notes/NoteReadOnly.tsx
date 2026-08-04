@@ -1,7 +1,7 @@
 import { ScrollView, View } from "react-native";
 
 import { AppText as Text } from "@/components/AppText";
-import { useAppTheme } from "@/components/AppTheme";
+import { useAppTheme } from "@/components/provider/AppTheme";
 
 export function NoteReadOnly({ markdown, reason }: { markdown: string | null; reason?: string }) {
   const appTheme = useAppTheme();

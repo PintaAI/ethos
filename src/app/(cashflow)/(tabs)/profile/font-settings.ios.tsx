@@ -11,7 +11,7 @@ import {
   padding,
   tint,
 } from "@expo/ui/swift-ui/modifiers";
-import { useAppTheme } from "@/components/AppTheme";
+import { useAppTheme } from "@/components/provider/AppTheme";
 
 export default function FontSettingsScreen() {
   const appTheme = useAppTheme();

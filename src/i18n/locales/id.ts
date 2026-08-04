@@ -56,8 +56,8 @@ const id = {
     menu: "Menu",
     cashflow: "Cashflow",
     cashflowHome: "Cashflow Home",
-    personalGrowth: "Personal Growth",
-    growthHome: "Growth Home",
+    lifeFlow: "LifeFlow",
+    lifeFlowHome: "LifeFlow Home",
     journal: "Journal",
     wallet: "Wallet",
     transfer: "Transfer",
@@ -69,7 +69,7 @@ const id = {
     habits: "Habits",
     schedule: "Schedule",
   },
-  selfImprovementHome: {
+  lifeFlowHome: {
     title: "Home",
     dailyRhythm: "Ritme hari ini",
     complete: "{{completed}} dari {{total}} selesai",
@@ -664,16 +664,6 @@ const id = {
     monthlyReviewNotificationTitle: "Tinjauan bulanan siap",
     monthlyReviewNotificationBody: "Lihat bagaimana keuangan Anda bulan lalu.",
   },
-  statie: {
-    title: "Statie",
-    description: "Form setup game mock untuk item nav Statie.",
-    fieldPlayer: "Nama pemain",
-    fieldMode: "Mode",
-    fieldDifficulty: "Kesulitan",
-  },
-  sidebarForm: {
-    placeholder: "Input placeholder",
-  },
   notes: {
     home: "Beranda Journal",
     notes: "Journal",
@@ -684,7 +674,7 @@ const id = {
     private: "pribadi",
     shared: "bersama",
     newTitle: "Judul entri journal baru",
-    create: "Buat entri",
+    create: "Tulis",
     createFailed: "Gagal membuat entri journal",
     tryAgain: "Coba lagi.",
     filterAll: "Semua",
@@ -798,7 +788,7 @@ const id = {
         title: "Tahu ke mana uangmu pergi.",
         description: "Catat pemasukan dan pengeluaran saat terjadi, lalu pahami saldo dan polanya tanpa spreadsheet.",
       },
-      growth: {
+      lifeFlow: {
         eyebrow: "BANGUN RITME HARIAN",
         title: "Rencanakan, jalani, lalu refleksikan.",
         description: "Atur waktu dengan Schedule, jaga konsistensi lewat Habits, dan gunakan Journal untuk merefleksikan hidup yang kamu bangun.",
@@ -809,8 +799,8 @@ const id = {
       systemTitle: "Dua ruang terarah. Satu hidup yang tertata.",
       cashflow: "Cashflow",
       cashflowDetail: "Uang, budget, dan tren",
-      personalGrowth: "Personal Growth",
-      personalGrowthDetail: "Journal, habits, dan schedule",
+      lifeFlow: "LifeFlow",
+      lifeFlowDetail: "Journal, habits, dan schedule",
       plan: "Rencana",
       act: "Jalani",
       reflect: "Refleksi",
@@ -826,8 +816,8 @@ const id = {
     imagePreview: "Pratinjau gambar wallet", choose: "Pilih gambar", replace: "Ganti", removeImage: "Hapus gambar", manageImage: "Kelola gambar wallet", palettePreview: "Pratinjau tema", addAnother: "Tambah wallet baru", saveChanges: "Simpan perubahan", saveWallet: "Simpan wallet", availableWallets: "Wallet-mu", active: "Aktif", presets: "Pilih gaya wallet", presetLabel: "Gaya wallet {{number}}",
     imageErrorTitle: "Gambar tidak tersedia", saveErrorTitle: "Wallet tidak dapat disimpan", saveError: "Coba lagi tanpa meninggalkan layar ini.", switchErrorTitle: "Wallet tidak dapat diganti", switchError: "Coba pilih wallet lagi.", activateWallet: "Pakai {{name}} sebagai wallet aktif", makeActive: "Pakai",
   },
-  growthSetup: {
-    title: "Personal Growth", heading: "Bangun satu habit kecil", description: "Terinspirasi dari gagasan membuat habit kecil dan mudah diulang. Ethos tidak berafiliasi dengan Atomic Habits.", skip: "Lewati dulu",
+  lifeFlowSetup: {
+    title: "LifeFlow", heading: "Bangun satu habit kecil", description: "Terinspirasi dari gagasan membuat habit kecil dan mudah diulang. Ethos tidak berafiliasi dengan Atomic Habits.", skip: "Lewati dulu",
     habitName: "1. Beri nama habit", tinyHabit: "2. Buat sangat kecil", habitPlaceholder: "Habit yang ingin kamu bangun", rhythm: "3. Pilih ritmemu", color: "4. Buat komitmen", chooseColor: "Pilih warna {{color}}",
     durationMinute: "1 menit", durationMinutes: "{{minutes}} menit", durationHour: "1 jam",
     recurrence: { daily: "Setiap hari", weekdays: "Hari kerja", weekends: "Akhir pekan", custom: "Hari pilihan" },

@@ -1,7 +1,7 @@
 import type { ActivityOverview } from "@/components/cashflow/ActivityHeatmap";
 import type { CashflowEntry } from "@/components/cashflow/CashflowTable";
 import type { CashflowStats } from "@/components/cashflow/CashflowStatsCard";
-import type { ThemeSet } from "@/components/AppTheme";
+import type { ThemeSet } from "@/components/provider/AppTheme";
 
 export type SyncStatus = "synced" | "pending" | "updated" | "deleted" | "conflict";
 export type BudgetPeriod = "daily" | "weekly" | "monthly";

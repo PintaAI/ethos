@@ -1,5 +1,5 @@
 import { Text, StyleSheet, type TextProps, type TextStyle } from "react-native";
-import { useAppTheme } from "@/components/AppTheme";
+import { useAppTheme } from "@/components/provider/AppTheme";
 
 type AppTextProps = TextProps & {
   className?: string;

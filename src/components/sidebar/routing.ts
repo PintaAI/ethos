@@ -1,7 +1,7 @@
 import type { AppArea, SidebarItem } from "@/components/sidebar/types";
 
 export function getCurrentAppArea(segments: string[]): AppArea {
-  if (segments.includes("(self-improvement)")) return "self-improvement";
+  if (segments.includes("(lifeflow)")) return "lifeflow";
   return "cashflow";
 }
 

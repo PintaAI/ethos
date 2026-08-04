@@ -6,7 +6,7 @@ import { useTranslation } from "react-i18next";
 
 import { AppSymbol } from "@/components/AppSymbol";
 import { AppText as Text } from "@/components/AppText";
-import { useAppTheme } from "@/components/AppTheme";
+import { useAppTheme } from "@/components/provider/AppTheme";
 import NoteEditor from "@/components/notes/NoteEditor";
 import type { HeadingLevel, NoteEditorHandle } from "@/components/notes/NoteEditor.types";
 import { NoteReadOnly } from "@/components/notes/NoteReadOnly";

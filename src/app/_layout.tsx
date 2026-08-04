@@ -9,16 +9,16 @@ import { ThemeProvider, DefaultTheme, DarkTheme, Stack, router, type Href } from
 import * as QuickActions from "expo-quick-actions";
 import { useQuickActionRouting } from "expo-quick-actions/router";
 import { SQLiteProvider } from "expo-sqlite";
-import { AppThemeProvider, useAppTheme } from "@/components/AppTheme";
-import { AuthProvider } from "@/components/AuthProvider";
-import { CurrencyProvider } from "@/components/CurrencyProvider";
-import { DrawerProvider } from "@/components/DrawerContext";
-import { SyncProvider } from "@/components/SyncProvider";
+import { AppThemeProvider, useAppTheme } from "@/components/provider/AppTheme";
+import { AuthProvider } from "@/components/provider/AuthProvider";
+import { CurrencyProvider } from "@/components/provider/CurrencyProvider";
+import { DrawerProvider } from "@/components/provider/DrawerContext";
+import { SyncProvider } from "@/components/provider/SyncProvider";
 import { CashflowDataProvider } from "@/data/cashflow/CashflowDataProvider";
-import { CashflowStatsWidgetSync } from "@/components/CashflowStatsWidgetSync";
+import { CashflowStatsWidgetSync } from "@/components/widgets/CashflowStatsWidgetSync";
 import { NotesDataProvider } from "@/data/notes/NotesDataProvider";
-import { SelfImprovementProvider } from "@/data/selfImprovement/SelfImprovementProvider";
-import { TimeMapWidgetSync } from "@/components/TimeMapWidgetSync";
+import { LifeFlowProvider } from "@/data/lifeflow/LifeFlowProvider";
+import { TimeMapWidgetSync } from "@/components/widgets/TimeMapWidgetSync";
 import { migrateCashflowDatabase } from "@/data/cashflow/schema";
 import { AppText as Text } from "@/components/AppText";
 import { configureForegroundNotifications, requestNotificationPermissionsAsync } from "@/lib/notifications";
@@ -26,7 +26,7 @@ import { toDateKey } from "@/lib/date";
 import { withDbLock } from "@/lib/sync/dbLock";
 import { Platform, Pressable, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { IslandToastProvider } from "@/components/IslandToast";
+import { IslandToastProvider } from "@/components/provider/IslandToast";
 
 configureForegroundNotifications();
 
@@ -136,7 +136,7 @@ function RootNavigator() {
                   <DatabaseReadyRouting language={i18n.resolvedLanguage} quickActionTitle={t("quickActions.newEntry")} />
                   <CashflowDataProvider>
                     <CashflowStatsWidgetSync />
-                    <SelfImprovementProvider>
+                    <LifeFlowProvider>
                       <TimeMapWidgetSync />
                       <NotesDataProvider>
                         <SyncProvider>
@@ -189,7 +189,7 @@ function RootNavigator() {
                           </DrawerProvider>
                         </SyncProvider>
                       </NotesDataProvider>
-                    </SelfImprovementProvider>
+                    </LifeFlowProvider>
                   </CashflowDataProvider>
               </SQLiteProvider>
             )}

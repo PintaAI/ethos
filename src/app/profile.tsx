@@ -1,7 +1,7 @@
 import { View } from "react-native";
 import { router, Stack } from "expo-router";
 import { toolbarIcons } from "@/config/toolbarIcons";
-import { useAppTheme } from "@/components/AppTheme";
+import { useAppTheme } from "@/components/provider/AppTheme";
 import { ProfileContent } from "@/components/profile/ProfileContent";
 
 export default function Profile() {

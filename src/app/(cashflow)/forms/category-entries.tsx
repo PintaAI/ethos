@@ -6,9 +6,9 @@ import { AppSymbol } from "@/components/AppSymbol";
 import { useTranslation } from "react-i18next";
 
 import { AppText as Text } from "@/components/AppText";
-import { useAppTheme } from "@/components/AppTheme";
+import { useAppTheme } from "@/components/provider/AppTheme";
 import { CashflowTable } from "@/components/cashflow/CashflowTable";
-import { useCurrency } from "@/components/CurrencyProvider";
+import { useCurrency } from "@/components/provider/CurrencyProvider";
 import { useCashflowData } from "@/data/cashflow/CashflowDataProvider";
 import { alpha } from "@/lib/color";
 import { localizeCategoryName } from "@/lib/categoryNames";

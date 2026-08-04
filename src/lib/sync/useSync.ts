@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSQLiteContext } from "expo-sqlite";
-import { useAuth } from "@/components/AuthProvider";
+import { useAuth } from "@/components/provider/AuthProvider";
 import { useCashflowData } from "@/data/cashflow/CashflowDataProvider";
 import { getPreference, setPreference } from "@/lib/preferences";
 import { syncNow } from "./syncEngine";

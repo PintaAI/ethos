@@ -12,8 +12,8 @@ import {
   type MaterializedRecurringEntry,
 } from "@/data/cashflow/repository";
 import { migrateCashflowDatabase } from "@/data/cashflow/schema";
-import { listDayPresets, listTimeBoxes } from "@/data/selfImprovement/repository";
-import { resolveTimeBoxesForRange } from "@/data/selfImprovement/recurrence";
+import { listDayPresets, listTimeBoxes } from "@/data/lifeflow/repository";
+import { resolveTimeBoxesForRange } from "@/data/lifeflow/recurrence";
 import { getDbLockGeneration, withDbLock } from "@/lib/sync/dbLock";
 import { toDateKey } from "@/lib/date";
 import { reconcileLocalRemindersAsync } from "@/lib/localReminders";
