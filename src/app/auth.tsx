@@ -2,7 +2,7 @@ import { useState } from "react";
 import { ActivityIndicator, Platform, Pressable, ScrollView, View } from "react-native";
 import { Image, type ImageSource } from "expo-image";
 import * as AppleAuthentication from "expo-apple-authentication";
-import { router, Stack, useLocalSearchParams } from "expo-router";
+import { router, Stack, useLocalSearchParams, type Href } from "expo-router";
 import { toolbarIcons } from "@/config/toolbarIcons";
 import { useTranslation } from "react-i18next";
 import { AppText } from "@/components/AppText";
@@ -90,6 +90,8 @@ export default function Auth() {
 
       if (returnTo === "inbound-share") {
         router.back();
+      } else if (returnTo === "onboarding-wallet") {
+        router.replace({ pathname: "/(onboarding)/wallet-setup", params: { mode: "cloud" } } as unknown as Href);
       } else {
         router.replace(returnTo === "cloud" ? "/profile" : "/");
       }
@@ -100,6 +102,7 @@ export default function Auth() {
         "code" in caughtError &&
         caughtError.code === "ERR_REQUEST_CANCELED"
       ) {
+        if (returnTo === "onboarding-wallet") router.replace("/(onboarding)/onboarding");
         return;
       }
 
@@ -121,7 +124,7 @@ export default function Auth() {
           unstable_sheetFooter: Platform.OS === "android"
             ? () => (
                 <AndroidFormFooter>
-                  <AndroidFormFooterButton label={t("common.close")} onPress={() => router.back()} />
+                  <AndroidFormFooterButton label={t("common.close")} onPress={() => returnTo === "onboarding-wallet" ? router.replace("/(onboarding)/onboarding") : router.back()} />
                 </AndroidFormFooter>
               )
             : undefined,
@@ -129,7 +132,7 @@ export default function Auth() {
       />
       {Platform.OS === "ios" ? (
         <Stack.Toolbar placement="right">
-          <Stack.Toolbar.Button icon={toolbarIcons.close} accessibilityLabel="Close" onPress={() => router.back()} />
+          <Stack.Toolbar.Button icon={toolbarIcons.close} accessibilityLabel={t("common.close")} onPress={() => returnTo === "onboarding-wallet" ? router.replace("/(onboarding)/onboarding") : router.back()} />
         </Stack.Toolbar>
       ) : null}
 

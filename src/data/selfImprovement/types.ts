@@ -9,7 +9,7 @@ export type Habit = {
   createdAt: string;
 };
 
-export type CreateHabitInput = Pick<Habit, "name" | "color" | "weekdays">;
+export type CreateHabitInput = Pick<Habit, "name" | "color" | "weekdays"> & { preferredDuration?: number };
 export type UpdateHabitInput = CreateHabitInput;
 
 export type HabitLog = {

@@ -42,8 +42,8 @@ export default function SummaryScreen() {
     });
   }, [datePeriod, entries]);
 
-  const filteredAnalytics = useMemo(() => buildAnalytics(filteredEntries, categories), [categories, filteredEntries]);
-  const filteredStats = useMemo(() => buildStats(filteredEntries), [filteredEntries]);
+  const filteredAnalytics = useMemo(() => buildAnalytics(filteredEntries, categories, i18n.language === "id" ? "id-ID" : "en-US"), [categories, filteredEntries, i18n.language]);
+  const filteredStats = useMemo(() => buildStats(filteredEntries, i18n.language === "id" ? "id-ID" : "en-US"), [filteredEntries, i18n.language]);
 
   return (
     <>

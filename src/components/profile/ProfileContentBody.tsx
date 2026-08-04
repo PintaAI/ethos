@@ -12,6 +12,7 @@ import { ProfileHeader } from "@/components/profile/ProfileHeader";
 import { APP_VERSION } from "@/config/app";
 import { alpha } from "@/lib/color";
 import { SUPPORTED_CURRENCIES } from "@/lib/currency";
+import { useIslandToast } from "@/components/IslandToast";
 
 export type ProfileContentBodyProps = {
   isAuthenticated: boolean;
@@ -46,7 +47,9 @@ export function ProfileContentBody(props: ProfileContentBodyProps) {
   const appTheme = useAppTheme();
   const { t, i18n } = useTranslation();
   const { compactAmountsEnabled, currency, setCompactAmountsEnabled, setCurrency } = useCurrency();
+  const { showIslandToast } = useIslandToast();
   const [expandedSetting, setExpandedSetting] = useState<"theme" | "currency" | "language" | null>(null);
+  const [cloudSwitchKey, setCloudSwitchKey] = useState(0);
   const rowColor = alpha(appTheme.colors.muted, appTheme.isDark ? 0.18 : 0.1);
 
   const Row = ({ label, detail, icon, onPress, destructive = false }: {
@@ -161,8 +164,12 @@ export function ProfileContentBody(props: ProfileContentBodyProps) {
             </View>
           </View>
           <Switch
+            key={cloudSwitchKey}
             value={props.cloudSyncEnabled}
-            onValueChange={props.onCloudSyncEnabledChange}
+            onValueChange={(value) => {
+              if (!props.isAuthenticated) setCloudSwitchKey((k) => k + 1);
+              props.onCloudSyncEnabledChange(value);
+            }}
             trackColor={{ true: appTheme.colors.primary }}
           />
         </View>
@@ -217,7 +224,19 @@ export function ProfileContentBody(props: ProfileContentBodyProps) {
         <Row label={t("profile.contactSupport")} icon="bubble.left.and.bubble.right" onPress={props.onContactSupport} />
       </Section>
 
-      {__DEV__ ? <Row label={t("profile.openOnboarding")} icon="hand.wave" onPress={props.onOpenOnboarding} /> : null}
+      {__DEV__ ? (
+        <Section title={t("profile.development")}>
+          <Row
+            label={t("profile.previewSaveFeedback")}
+            icon="checkmark.circle.fill"
+            onPress={() => showIslandToast({
+              icon: "checkmark.circle.fill",
+              accessibilityLabel: t("entry.transactionSaved"),
+            })}
+          />
+          <Row label={t("profile.openOnboarding")} icon="hand.wave" onPress={props.onOpenOnboarding} />
+        </Section>
+      ) : null}
     </ScrollView>
   );
 }

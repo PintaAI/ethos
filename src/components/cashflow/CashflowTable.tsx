@@ -11,8 +11,9 @@ import { AppText as RNText } from "@/components/AppText";
 import { useAppTheme } from "@/components/AppTheme";
 import { useCurrency } from "@/components/CurrencyProvider";
 import { alpha, mix } from "@/lib/color";
+import { localizeCategoryName } from "@/lib/categoryNames";
 import { formatEntryAmount } from "@/lib/currency";
-import { addDaysToDateKey, formatDateKey, parseDateKey } from "@/lib/date";
+import { addDaysToDateKey, formatDateKey, localeFromLanguage, parseDateKey } from "@/lib/date";
 import { useCashflowData } from "@/data/cashflow/CashflowDataProvider";
 import { useSyncStatus } from "@/components/SyncProvider";
 
@@ -127,7 +128,7 @@ function CategoryBadge({ category, categoryColor, categoryIcon }: { category: st
     <View className="self-start flex-row items-center gap-1 rounded-full px-2 py-1" style={{ backgroundColor: bg }}>
       <TableSymbol name={symbol} color={color} size={12} />
       <RNText numberOfLines={1} className="text-xs font-medium" style={{ color }}>
-        {category}
+        {localizeCategoryName(category)}
       </RNText>
     </View>
   );
@@ -298,7 +299,7 @@ function CashflowTableRow({ item, isSelecting, selected, toggleRow, onMove, onDe
           <View className="min-w-0 flex-1 gap-1.5">
             <RNText numberOfLines={1} className="text-base font-semibold" style={{ color: appTheme.colors.foreground }}>{item.name}</RNText>
             <View className="flex-row items-center gap-2 overflow-hidden">
-              {!hideTanggal ? <RNText className="text-xs" style={{ color: appTheme.colors.muted }}>{formatDateKey(item.date)}</RNText> : null}
+              {!hideTanggal ? <RNText className="text-xs" style={{ color: appTheme.colors.muted }}>{formatDateKey(item.date, { day: "2-digit", month: "short", year: "numeric" }, localeFromLanguage(i18n.language))}</RNText> : null}
               <CategoryBadge category={item.category} categoryColor={item.categoryColor} categoryIcon={item.categoryIcon} />
             </View>
           </View>
@@ -577,7 +578,7 @@ export function CashflowTable({ entries, dateFilter, onDateFilterChange, hideTan
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-2">
               <FilterChip label={t('cashflow.all')} active={categoryFilter === "all"} onPress={() => setCategoryFilter("all")} />
               {categoryOptions.map((option) => (
-                <FilterChip key={option} label={option} active={categoryFilter === option} onPress={() => setCategoryFilter(option)} />
+                <FilterChip key={option} label={localizeCategoryName(option) ?? option} active={categoryFilter === option} onPress={() => setCategoryFilter(option)} />
               ))}
             </ScrollView>
           </View>

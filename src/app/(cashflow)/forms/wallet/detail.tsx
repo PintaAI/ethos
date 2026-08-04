@@ -4,6 +4,7 @@ import { Image } from "expo-image";
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import { toolbarIcons } from "@/config/toolbarIcons";
 import { AppSymbol } from "@/components/AppSymbol";
+import { GlassBox } from "@/components/GlassBox";
 import { useTranslation } from "react-i18next";
 import { AppText as Text } from "@/components/AppText";
 import { AndroidFormFooter, AndroidFormFooterButton } from "@/components/AndroidFormFooter";
@@ -18,6 +19,8 @@ import { WALLET_ICON_OPTIONS, walletImageToIcon } from "@/lib/categoryMapping";
 import { pickUploadImage, type PickedUploadImage } from "@/lib/imageUpload";
 import { colorsToThemeSet, extractColors } from "@/lib/palette";
 import { getManagementImageSource, getProfileImageSource } from "@/lib/protectedImage";
+import { loadWalletPresetImage, walletPresets } from "@/lib/walletPresets";
+import { deleteOwnedWalletImage, persistWalletImage } from "@/lib/walletImages";
 
 function isPicture(image: string | null) {
   return !!image && !image.startsWith("symbol:");
@@ -41,6 +44,8 @@ export default function WalletDetailScreen() {
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [previewImageUri, setPreviewImageUri] = useState<string | null>(null);
   const [pendingUploadImage, setPendingUploadImage] = useState<PickedUploadImage | null>(null);
+  const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
+  const [loadingPreset, setLoadingPreset] = useState<string | null>(null);
   const serverManagementId = management?.remoteId ?? null;
   const displayImage = previewImageUri ?? image;
   const managementImageSource = previewImageUri ? { uri: previewImageUri } : getManagementImageSource(image);
@@ -53,6 +58,7 @@ export default function WalletDetailScreen() {
     setImage(management?.image ?? "symbol:wallet.pass.fill");
     setPreviewImageUri(null);
     setPendingUploadImage(null);
+    setSelectedPreset(null);
   }
 
   useEffect(() => {
@@ -73,8 +79,16 @@ export default function WalletDetailScreen() {
   const handleSave = async () => {
     if (!name.trim()) return;
     setIsSaving(true);
+    let createdManagementId: string | null = null;
+    let persistedImageUri: string | null = null;
     try {
       let savedImage = image.trim() || null;
+
+      if (isNewWallet && pendingUploadImage) {
+        setIsUploadingImage(true);
+        persistedImageUri = await persistWalletImage(pendingUploadImage);
+        savedImage = persistedImageUri;
+      }
 
       if (!isNewWallet && management && pendingUploadImage) {
         if (!serverManagementId) {
@@ -111,12 +125,42 @@ export default function WalletDetailScreen() {
       }
 
       if (isNewWallet) {
-        await createManagement({ name, image: savedImage });
+        createdManagementId = await createManagement({ name, image: pendingUploadImage ? null : savedImage });
+        if (!createdManagementId) throw new Error(t("wallet.saveFailedMessage"));
+
+        if (pendingUploadImage && persistedImageUri) {
+          let imageTheme = null;
+          let themeSlug: string | null = null;
+          try {
+            const themeSet = colorsToThemeSet(await extractColors(pendingUploadImage.uri));
+            const storedTheme = await appTheme.upsertWalletTheme(createdManagementId, `${name.trim()} Wallet`, themeSet);
+            themeSlug = storedTheme.slug;
+            imageTheme = {
+              version: 1 as const,
+              image: persistedImageUri,
+              themeSlug: storedTheme.slug,
+              themeSet,
+            };
+          } catch (error) {
+            console.warn("Failed to create wallet theme from preset image", error);
+          }
+
+          await setManagementImage(createdManagementId, persistedImageUri, imageTheme);
+          if (themeSlug) appTheme.setTheme(themeSlug);
+        }
       } else if (id) {
         await updateManagement(id, { name, image: savedImage });
       }
       router.back();
     } catch (error) {
+      if (createdManagementId) {
+        try {
+          await deleteManagement(createdManagementId);
+        } catch (rollbackError) {
+          console.warn("Failed to roll back wallet creation", rollbackError);
+        }
+      }
+      if (persistedImageUri) deleteOwnedWalletImage(persistedImageUri);
       Alert.alert(
         t("wallet.saveFailedTitle"),
         error instanceof Error ? error.message : t("wallet.saveFailedMessage"),
@@ -173,8 +217,8 @@ export default function WalletDetailScreen() {
   };
 
   const handleChooseImage = async () => {
-    if (!management || isSaving) return;
-    if (!serverManagementId) {
+    if (isSaving || loadingPreset) return;
+    if (management && !serverManagementId) {
       Alert.alert(t("wallet.syncRequiredTitle"), t("wallet.syncRequiredMessage"));
       return;
     }
@@ -185,11 +229,35 @@ export default function WalletDetailScreen() {
 
       setPreviewImageUri(pickedImage.uri);
       setPendingUploadImage(pickedImage);
+      setSelectedPreset(null);
     } catch (error) {
       setPreviewImageUri(null);
       setPendingUploadImage(null);
       console.error("Failed to choose wallet image", error);
       Alert.alert(t("wallet.photoUploadFailedTitle"), error instanceof Error ? error.message : t("wallet.photoUploadFailedMessage"));
+    }
+  };
+
+  const handleChoosePreset = async (preset: (typeof walletPresets)[number]) => {
+    if (isSaving || loadingPreset) return;
+    if (management && !serverManagementId) {
+      Alert.alert(t("wallet.syncRequiredTitle"), t("wallet.syncRequiredMessage"));
+      return;
+    }
+    setLoadingPreset(preset.id);
+    try {
+      const presetImage = await loadWalletPresetImage(preset);
+      if (!presetImage) throw new Error(t("wallet.photoUploadFailedMessage"));
+      setPreviewImageUri(presetImage.uri);
+      setPendingUploadImage(presetImage);
+      setSelectedPreset(preset.id);
+    } catch (error) {
+      setPreviewImageUri(null);
+      setPendingUploadImage(null);
+      setSelectedPreset(null);
+      Alert.alert(t("wallet.photoUploadFailedTitle"), error instanceof Error ? error.message : t("wallet.photoUploadFailedMessage"));
+    } finally {
+      setLoadingPreset(null);
     }
   };
 
@@ -238,7 +306,7 @@ export default function WalletDetailScreen() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={management ? t("wallet.uploadPhotoLabel") : t("wallet.walletImageLabel")}
-              disabled={!management || isSaving}
+              disabled={isSaving}
               onPress={handleChooseImage}
               className="h-24 w-24 items-center justify-center overflow-hidden rounded-[30px]"
               style={{ backgroundColor: alpha(appTheme.colors.primary, 0.14), opacity: isSaving ? 0.72 : 1 }}
@@ -306,6 +374,52 @@ export default function WalletDetailScreen() {
 
         <View className="gap-3">
           <Text className="px-1 text-xs font-semibold uppercase tracking-[2px]" style={{ color: appTheme.colors.muted }}>
+            {t("walletSetup.presets")}
+          </Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
+            {walletPresets.map((preset, index) => {
+              const selected = selectedPreset === preset.id;
+              const loading = loadingPreset === preset.id;
+              return (
+                <GlassBox
+                  key={preset.id}
+                  isInteractive
+                  tintColor={alpha(appTheme.colors.primary, selected ? (appTheme.isDark ? 0.3 : 0.18) : (appTheme.isDark ? 0.16 : 0.08))}
+                  glassEffectStyle="clear"
+                  style={{
+                    borderColor: selected ? appTheme.colors.primary : borderColor,
+                    borderRadius: 16,
+                    borderWidth: selected ? 3 : 1,
+                    height: 64,
+                    opacity: loadingPreset !== null && !loading ? 0.5 : 1,
+                    overflow: "hidden",
+                    width: 64,
+                  }}
+                >
+                  <Pressable
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: selected, disabled: isSaving || loadingPreset !== null }}
+                    accessibilityLabel={t("walletSetup.presetLabel", { number: index + 1 })}
+                    disabled={isSaving || loadingPreset !== null}
+                    onPress={() => { void handleChoosePreset(preset); }}
+                    className="items-center justify-center rounded-2xl"
+                    style={{ height: "100%", width: "100%" }}
+                  >
+                    <Image source={preset.source} contentFit="contain" style={{ height: 54, width: 54 }} />
+                    {loading ? (
+                      <View className="absolute inset-0 items-center justify-center" style={{ backgroundColor: alpha(appTheme.colors.background, 0.72) }}>
+                        <ActivityIndicator color={appTheme.colors.primary} size="small" />
+                      </View>
+                    ) : null}
+                  </Pressable>
+                </GlassBox>
+              );
+            })}
+          </ScrollView>
+        </View>
+
+        <View className="gap-3">
+          <Text className="px-1 text-xs font-semibold uppercase tracking-[2px]" style={{ color: appTheme.colors.muted }}>
             {t("wallet.walletImageLabel")}
           </Text>
           <IconSelector
@@ -315,6 +429,7 @@ export default function WalletDetailScreen() {
               setImage(`symbol:${nextIcon}`);
               setPreviewImageUri(null);
               setPendingUploadImage(null);
+              setSelectedPreset(null);
             }}
           />
         </View>

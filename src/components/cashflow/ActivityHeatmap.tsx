@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, ScrollView, useWindowDimensions, View } from "react-native";
+import { useTranslation } from "react-i18next";
 import { AppSymbol } from "@/components/AppSymbol";
 import { GlassBox } from "@/components/GlassBox";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
@@ -7,7 +8,7 @@ import { runOnJS } from "react-native-reanimated";
 import { AppText as RNText } from "@/components/AppText";
 import { useAppTheme } from "@/components/AppTheme";
 import { alpha } from "@/lib/color";
-import { formatLocalizedDate, parseDateKey, toDateKey } from "@/lib/date";
+import { formatLocalizedDate, localeFromLanguage, parseDateKey, toDateKey } from "@/lib/date";
 import { getPreference, setPreference } from "@/lib/preferences";
 
 export type ActivityDay = {
@@ -30,10 +31,18 @@ type ActivityHeatmapProps = {
 
 type ActivityView = "grid" | "calendar";
 
-const DAY_LABELS = ["Sen", "", "Rab", "", "Jum", "", ""];
-
 function getLocalTodayKey() {
   return toDateKey(new Date());
+}
+
+function getDayLabels(locale: string) {
+  const base = new Date(2024, 0, 1);
+  return Array.from({ length: 7 }, (_, i) => {
+    if (i % 2 !== 0) return "";
+    const d = new Date(base);
+    d.setDate(base.getDate() + i);
+    return d.toLocaleDateString(locale, { weekday: "short" });
+  });
 }
 
 function getLevel(count: number) {
@@ -59,16 +68,16 @@ function getCellColor(count: number, primary: string, mutedFill: string) {
   }
 }
 
-function formatDayTitle(day: ActivityDay) {
-  const formattedDate = formatLocalizedDate(parseDateKey(day.date), "id-ID", {
+function formatDayTitle(day: ActivityDay, locale: string, t: (key: string, options?: Record<string, unknown>) => string) {
+  const formattedDate = formatLocalizedDate(parseDateKey(day.date), locale, {
     day: "numeric",
     month: "short",
     year: "numeric",
   });
 
-  if (day.count === 0) return `${formattedDate}: belum ada transaksi`;
+  if (day.count === 0) return t("cashflow.activityNoTransactions", { formattedDate });
 
-  return `${formattedDate}: ${day.count} transaksi`;
+  return t("cashflow.activityTransactions", { formattedDate, count: day.count });
 }
 
 function getDayNumber(dateKey: string) {
@@ -168,11 +177,13 @@ function ActivityViewTabs({ view, onChange, compact = false }: { view: ActivityV
 
 function ActivityGrid({ activity, selectedDate, onDateSelect }: ActivityHeatmapProps) {
   const appTheme = useAppTheme();
+  const { t, i18n } = useTranslation();
   const scrollRef = useRef<ScrollView>(null);
   const selectedIndex = activity.days.findIndex((day) => day.date === selectedDate);
   const mutedFill = appTheme.isDark ? "rgba(255,255,255,0.09)" : "rgba(15,23,42,0.08)";
   const borderColor = appTheme.isDark ? "rgba(255,255,255,0.16)" : "rgba(15,23,42,0.12)";
   const weeks = chunkWeeks(activity.days);
+  const dayLabels = useMemo(() => getDayLabels(localeFromLanguage(i18n.language)), [i18n.language]);
 
   useEffect(() => {
     requestAnimationFrame(() => {
@@ -188,7 +199,7 @@ function ActivityGrid({ activity, selectedDate, onDateSelect }: ActivityHeatmapP
   return (
     <View className="mt-3 flex-row gap-2">
       <View className="shrink-0 gap-1">
-        {DAY_LABELS.map((label, index) => (
+        {dayLabels.map((label, index) => (
           <RNText key={`${label}-${index}`} className="text-xs" style={{ color: appTheme.colors.muted }}>
             {label}
           </RNText>
@@ -206,7 +217,7 @@ function ActivityGrid({ activity, selectedDate, onDateSelect }: ActivityHeatmapP
                   key={day.date}
                   onPress={() => onDateSelect(day.date)}
                   accessibilityRole="button"
-                  accessibilityLabel={formatDayTitle(day)}
+                  accessibilityLabel={formatDayTitle(day, localeFromLanguage(i18n.language), t)}
                   className="h-3 w-3 rounded-[3px]"
                   style={{
                     backgroundColor: getCellColor(day.count, appTheme.colors.primary, mutedFill),
@@ -225,12 +236,14 @@ function ActivityGrid({ activity, selectedDate, onDateSelect }: ActivityHeatmapP
 
 function ActivityCalendar({ activity, selectedDate, onDateSelect }: ActivityHeatmapProps) {
   const appTheme = useAppTheme();
+  const { t, i18n } = useTranslation();
   const scrollRef = useRef<ScrollView>(null);
   const todayKey = getLocalTodayKey();
   const days = getMonthRangeDays(activity.days, selectedDate);
   const selectedIndex = days.findIndex((day) => day.date === selectedDate);
   const mutedFill = appTheme.isDark ? "rgba(255,255,255,0.09)" : "rgba(15,23,42,0.08)";
   const borderColor = appTheme.isDark ? "rgba(255,255,255,0.16)" : "rgba(15,23,42,0.12)";
+  const locale = localeFromLanguage(i18n.language);
 
   useEffect(() => {
     requestAnimationFrame(() => {
@@ -242,7 +255,7 @@ function ActivityCalendar({ activity, selectedDate, onDateSelect }: ActivityHeat
     <ScrollView ref={scrollRef} horizontal showsHorizontalScrollIndicator={false} className="mt-3" contentContainerClassName="gap-1 pb-1">
       {days.map((day) => {
         const date = parseDateKey(day.date);
-        const weekday = date.toLocaleDateString("id-ID", { weekday: "short" });
+        const weekday = date.toLocaleDateString(locale, { weekday: "short" });
         const isToday = day.date === todayKey;
         const isSelected = day.date === selectedDate;
         const isPast = day.date < todayKey;
@@ -267,7 +280,7 @@ function ActivityCalendar({ activity, selectedDate, onDateSelect }: ActivityHeat
             <Pressable
               onPress={() => onDateSelect(day.date)}
               accessibilityRole="button"
-              accessibilityLabel={formatDayTitle(day)}
+              accessibilityLabel={formatDayTitle(day, locale, t)}
               className="h-8 w-11 items-center justify-center rounded-[3px]"
               style={{
                 backgroundColor: getCellColor(day.count, appTheme.colors.primary, mutedFill),
@@ -314,6 +327,7 @@ function HeatmapLegend() {
 }
 
 export function ActivityHeatmap({ activity, selectedDate, onDateSelect }: ActivityHeatmapProps) {
+  const { t } = useTranslation();
   const appTheme = useAppTheme();
   const { width } = useWindowDimensions();
   const [view, setView] = useState<ActivityView>("calendar");
@@ -354,7 +368,7 @@ export function ActivityHeatmap({ activity, selectedDate, onDateSelect }: Activi
       ) : null}
 
       <View className="flex-row flex-wrap items-center gap-2">
-        <RNText className="text-xs" style={{ color: appTheme.colors.muted }}>{activity.totalEntries} tercatat</RNText>
+        <RNText className="text-xs" style={{ color: appTheme.colors.muted }}>{t('cashflow.activityRecorded', { count: activity.totalEntries })}</RNText>
         <RNText className="text-xs" style={{ color: appTheme.colors.muted }}>|</RNText>
         <RNText className="text-xs" style={{ color: appTheme.colors.muted }}>{activity.activeDays} active days</RNText>
         {!isWide ? (

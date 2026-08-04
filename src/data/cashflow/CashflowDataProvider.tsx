@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { useSQLiteContext } from "expo-sqlite";
 import type { BudgetPeriod, CashflowDataState, CashflowCategory, CashflowManagement, CashflowOverallBudget, CashflowQuickFill, CashflowRecurringEntry, CreateCategoryInput, CreateEntryInput, CreateQuickFillInput, CreateRecurringEntryInput, ManagementImageTheme, UpdateCategoryInput, UpdateManagementInput } from "./types";
 import {
@@ -52,6 +53,7 @@ const emptyAnalytics = buildAnalytics([], []);
 const CashflowDataContext = createContext<CashflowDataState | null>(null);
 
 export function CashflowDataProvider({ children }: { children: ReactNode }) {
+  const { i18n } = useTranslation();
   const db = useSQLiteContext();
   const [isReady, setIsReady] = useState(false);
   const [isSwitchingManagement, setIsSwitchingManagement] = useState(false);
@@ -191,9 +193,10 @@ export function CashflowDataProvider({ children }: { children: ReactNode }) {
     () => managements.find((management) => management.id === activeManagementId) ?? null,
     [activeManagementId, managements],
   );
-  const stats = useMemo(() => buildStats(entries), [entries]);
+  const locale = i18n.language === "id" ? "id-ID" : "en-US";
+  const stats = useMemo(() => buildStats(entries, locale), [entries, locale]);
   const activity = useMemo(() => buildActivity(entries), [entries]);
-  const analytics = useMemo(() => buildAnalytics(entries, categories), [entries, categories]);
+  const analytics = useMemo(() => buildAnalytics(entries, categories, locale), [entries, categories, locale]);
 
   const value: CashflowDataState = useMemo(() => ({
     isReady,
@@ -210,7 +213,7 @@ export function CashflowDataProvider({ children }: { children: ReactNode }) {
     activity: entries.length > 0 ? activity : emptyActivity,
     analytics: entries.length > 0 ? analytics : emptyAnalytics,
     setActiveManagementId: selectActiveManagement,
-    setManagementImage: async (managementId: string, image: string, imageTheme: ManagementImageTheme | null) => {
+    setManagementImage: async (managementId: string, image: string | null, imageTheme: ManagementImageTheme | null) => {
       await withDbLock(() => persistManagementImage(db, managementId, image, imageTheme));
       await refresh();
     },
@@ -219,8 +222,9 @@ export function CashflowDataProvider({ children }: { children: ReactNode }) {
       await refresh();
     },
     createManagement: async (input) => {
-      await withDbLock(() => insertManagement(db, input));
+      const id = await withDbLock(() => insertManagement(db, input));
       await refresh();
+      return id;
     },
     updateManagement: async (managementId: string, input: UpdateManagementInput) => {
       await withDbLock(() => updateManagementInRepo(db, managementId, input));

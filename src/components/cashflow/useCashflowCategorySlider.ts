@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SFSymbol } from "expo-symbols";
 
-import i18n from "@/i18n";
 import { type CategoryOption, type CategorySliderHandle } from "@/components/cashflow/CategorySlider";
 import { getPreference, setPreference, type Preferences } from "@/lib/preferences";
 
@@ -32,17 +31,15 @@ export function useCashflowCategorySlider({
 }) {
   const sliderRef = useRef<CategorySliderHandle>(null);
   const fallbackCategories = useMemo(() => {
-    const names = i18n.language === "id"
-      ? ["Makanan", "Transport", "Belanja", "Tagihan"]
-      : ["Food", "Transport", "Shopping", "Bills"];
+    const names = ["Makanan", "Transportasi", "Belanja", "Tagihan"];
 
     return names.map((name, i) => ({
       id: null,
       name,
-      symbol: (["fork.knife", "car.fill", "basket.fill", "bolt.fill"] as SFSymbol[])[i],
-      color: (["#ca8a04", "#ea580c", "#dc2626", "#2563eb"] as const)[i],
+      symbol: (["birthday.cake.fill", "bus.fill", "basket.fill", "receipt.fill"] as SFSymbol[])[i],
+      color: (["#ef4444", "#f97316", "#eab308", "#22c55e"] as const)[i],
     })) satisfies CategoryOption[];
-  }, [i18n.language]);
+  }, []);
   const categoryOptions: CategoryOption[] = useMemo(
     () => categories.length > 0
       ? categories.map((category) => ({

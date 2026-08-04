@@ -13,6 +13,7 @@ import { IconSelector } from "@/components/IconSelector";
 import { useCashflowData } from "@/data/cashflow/CashflowDataProvider";
 import type { BudgetPeriod, CashflowCategory } from "@/data/cashflow/types";
 import { CATEGORY_COLOR_OPTIONS, CATEGORY_ICON_OPTIONS } from "@/lib/categoryMapping";
+import { localizeCategoryName } from "@/lib/categoryNames";
 import { alpha } from "@/lib/color";
 
 const BUDGET_PERIODS = [
@@ -92,7 +93,7 @@ export default function CategoryDetailScreen() {
 
   const confirmDelete = () => {
     if (!category) return;
-    Alert.alert(t("categories.removeCategoryTitle"), t("categories.removeCategoryMessage", { name: category.name }), [
+    Alert.alert(t("categories.removeCategoryTitle"), t("categories.removeCategoryMessage", { name: localizeCategoryName(category.name) }), [
       { text: t("common.cancel"), style: "cancel" },
       { text: t("common.remove"), style: "destructive", onPress: () => deleteCategory(category.id).then(() => router.back()).catch(alertCategoryError) },
     ]);
@@ -113,7 +114,7 @@ export default function CategoryDetailScreen() {
     <>
       <Stack.Screen
         options={{
-          title: isNewCategory ? t("categories.newCategory") : category?.name,
+          title: isNewCategory ? t("categories.newCategory") : localizeCategoryName(category?.name) ?? undefined,
           unstable_sheetFooter: Platform.OS === "android"
             ? () => (
                 <AndroidFormFooter>
@@ -221,7 +222,7 @@ export default function CategoryDetailScreen() {
         </View>
 
         {category ? (
-          <Pressable accessibilityRole="button" accessibilityLabel={t("categories.removeAccessibility", { name: category.name })} onPress={confirmDelete} className="min-h-12 items-center justify-center rounded-2xl border" style={{ borderColor: alpha(appTheme.colors.negative, 0.4), backgroundColor: alpha(appTheme.colors.negative, appTheme.isDark ? 0.16 : 0.08) }}>
+          <Pressable accessibilityRole="button" accessibilityLabel={t("categories.removeAccessibility", { name: localizeCategoryName(category.name) })} onPress={confirmDelete} className="min-h-12 items-center justify-center rounded-2xl border" style={{ borderColor: alpha(appTheme.colors.negative, 0.4), backgroundColor: alpha(appTheme.colors.negative, appTheme.isDark ? 0.16 : 0.08) }}>
             <Text className="text-sm font-bold" style={{ color: appTheme.colors.negative }}>
               {t("common.remove")}
             </Text>

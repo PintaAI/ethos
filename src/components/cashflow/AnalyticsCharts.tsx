@@ -11,7 +11,8 @@ import { useCurrency } from "@/components/CurrencyProvider";
 import { AppSegmentedControl } from "@/components/AppSegmentedControl";
 
 import { alpha } from "@/lib/color";
-import { toDateKey } from "@/lib/date";
+import { localizeCategoryName } from "@/lib/categoryNames";
+import { localeFromLanguage, toDateKey } from "@/lib/date";
 import type { CashflowAnalytics } from "@/data/cashflow/types";
 
 // ─── Types ───────────────────────────────────────────────
@@ -65,10 +66,10 @@ function recentMonthKeys(anchor: Date, count: number) {
 
 // ─── Mock Data ────────────────────────────────────────────
 
-function createMockAnalytics(filters: Filters): MockAnalyticsData {
+function createMockAnalytics(filters: Filters, locale: string): MockAnalyticsData {
   const allMonths = Array.from({ length: 6 }, (_, i) => {
     const d = new Date(2026, 0 + i, 1);
-    return { month: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`, monthLabel: d.toLocaleDateString("id-ID", { month: "short", year: "numeric" }) };
+    return { month: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`, monthLabel: d.toLocaleDateString(locale, { month: "short", year: "numeric" }) };
   });
 
   const allCategories: CategoryAnalytics[] = [
@@ -272,7 +273,7 @@ function CategoryDonut({ data }: { data: CategoryAnalytics[] }) {
         {data.map((category) => (
           <View key={category.category} className="flex-row items-center gap-2.5">
             <View className="h-1.5 w-5 rounded-full" style={{ backgroundColor: category.color ?? appTheme.colors.primary }} />
-            <RNText numberOfLines={1} className="flex-1 text-xs font-medium" style={{ color: appTheme.colors.foreground }}>{category.category}</RNText>
+            <RNText numberOfLines={1} className="flex-1 text-xs font-medium" style={{ color: appTheme.colors.foreground }}>{localizeCategoryName(category.category)}</RNText>
             <RNText className="w-10 text-right text-xs font-semibold" style={{ color: appTheme.colors.muted }}>{category.percentage}%</RNText>
             <RNText className="w-[72px] text-right text-xs font-semibold" style={{ color: appTheme.colors.foreground }}>{format(category.total, { compact: true })}</RNText>
           </View>
@@ -312,7 +313,7 @@ function CategoryBreakdown({ data, onCategoryPress }: { data: CategoryAnalytics[
                 key={cat.category}
                 onPress={() => onCategoryPress?.(cat.category)}
                 accessibilityRole="button"
-                accessibilityLabel={`${cat.category}, ${format(cat.total)}, ${t('analytics.entries', { count: cat.count })}`}
+                accessibilityLabel={`${localizeCategoryName(cat.category)}, ${format(cat.total)}, ${t('analytics.entries', { count: cat.count })}`}
                 className="min-h-16 flex-row items-center gap-3 rounded-[28px] px-3 py-3"
                 style={{
                   backgroundColor: alpha(color, appTheme.isDark ? 0.1 : 0.055),
@@ -324,7 +325,7 @@ function CategoryBreakdown({ data, onCategoryPress }: { data: CategoryAnalytics[
                   <ChartSymbol name="tag.fill" color={color} size={16} />
                 </View>
                 <View className="min-w-0 flex-1 gap-0.5">
-                  <RNText numberOfLines={1} className="text-sm font-semibold" style={{ color: appTheme.colors.foreground }}>{cat.category}</RNText>
+                  <RNText numberOfLines={1} className="text-sm font-semibold" style={{ color: appTheme.colors.foreground }}>{localizeCategoryName(cat.category)}</RNText>
                   <RNText className="text-xs" style={{ color: appTheme.colors.muted }}>{t('analytics.entries', { count: cat.count })}</RNText>
                 </View>
                 <View className="shrink-0 items-end gap-0.5">
@@ -433,8 +434,8 @@ export function AnalyticsCharts({ header, hideStats = false, data: providedData,
   }
 
   const data = useMemo(
-    () => providedData ?? createMockAnalytics({ from: datePeriod.from, to: datePeriod.to, allTime: datePeriod.allTime }),
-    [datePeriod, providedData],
+    () => providedData ?? createMockAnalytics({ from: datePeriod.from, to: datePeriod.to, allTime: datePeriod.allTime }, localeFromLanguage(i18n.language)),
+    [datePeriod, providedData, i18n.language],
   );
 
   const monthLabel = selectedMonth.toLocaleDateString(i18n.language === "id" ? "id-ID" : "en-US", { month: "long", year: "numeric" });

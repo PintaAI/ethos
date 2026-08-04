@@ -161,11 +161,12 @@ async function isSystemHabit(db: SQLiteDatabase, id: string): Promise<boolean> {
 
 export async function createHabit(db: SQLiteDatabase, input: CreateHabitInput): Promise<void> {
   await db.runAsync(
-    "INSERT INTO habits (id, name, color, weekdays_json, created_at) VALUES (?, ?, ?, ?, ?)",
+    "INSERT INTO habits (id, name, color, weekdays_json, preferred_duration, created_at) VALUES (?, ?, ?, ?, ?, ?)",
     createId("habit"),
     input.name.trim(),
     input.color,
     JSON.stringify(input.weekdays),
+    input.preferredDuration ?? 30,
     new Date().toISOString(),
   );
 }
@@ -174,10 +175,11 @@ export async function updateHabit(db: SQLiteDatabase, id: string, input: UpdateH
   if (await isSystemHabit(db, id)) return;
   await db.withExclusiveTransactionAsync(async (txn) => {
     await txn.runAsync(
-      "UPDATE habits SET name = ?, color = ?, weekdays_json = ? WHERE id = ?",
+      "UPDATE habits SET name = ?, color = ?, weekdays_json = ?, preferred_duration = COALESCE(?, preferred_duration) WHERE id = ?",
       input.name.trim(),
       input.color,
       JSON.stringify(input.weekdays),
+      input.preferredDuration ?? null,
       id,
     );
     await txn.runAsync(

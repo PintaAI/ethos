@@ -151,6 +151,7 @@ function createAppThemeValue(
   availableThemes: ThemeMeta[],
   customThemes: StoredTheme[],
   saveTheme: (name: string, themeSet: ThemeSet) => Promise<StoredTheme>,
+  upsertWalletTheme: (walletId: string, name: string, themeSet: ThemeSet) => Promise<StoredTheme>,
   deleteTheme: (slug: string) => Promise<void>,
 ) {
   const resolvedScheme = colorScheme;
@@ -179,6 +180,7 @@ function createAppThemeValue(
     availableThemes,
     customThemes,
     saveTheme,
+    upsertWalletTheme,
     deleteTheme,
     vars,
     tokens: {
@@ -275,10 +277,6 @@ export function AppThemeProvider({ children }: { children: ReactNode }) {
 
   const setColorScheme = (nextColorScheme: AppColorScheme) => {
     setColorSchemeState(nextColorScheme);
-
-    requestAnimationFrame(() => {
-      Appearance.setColorScheme(nextColorScheme);
-    });
   };
 
   const setPersistedTheme = (nextTheme: ThemeName) => {
@@ -319,6 +317,19 @@ export function AppThemeProvider({ children }: { children: ReactNode }) {
     setCustomThemes(nextCustomThemes);
     setPersistedTheme(storedTheme.slug);
 
+    return storedTheme;
+  };
+
+  const upsertWalletTheme = async (walletId: string, name: string, themeSet: ThemeSet) => {
+    const slug = `wallet-${walletId.toLowerCase().replace(/[^a-z0-9-]/g, "-")}`;
+    const existing = customThemes.find((item) => item.slug === slug);
+    const storedTheme: StoredTheme = {
+      slug,
+      name: name.trim() || "Wallet Theme",
+      createdAt: existing?.createdAt ?? new Date().toISOString(),
+      ...themeSet,
+    };
+    setCustomThemes(await saveCustomTheme(storedTheme));
     return storedTheme;
   };
 
@@ -365,6 +376,7 @@ export function AppThemeProvider({ children }: { children: ReactNode }) {
     availableThemes,
     customThemes,
     saveTheme,
+    upsertWalletTheme,
     deleteTheme,
   );
 

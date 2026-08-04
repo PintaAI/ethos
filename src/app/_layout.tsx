@@ -26,6 +26,7 @@ import { toDateKey } from "@/lib/date";
 import { withDbLock } from "@/lib/sync/dbLock";
 import { Platform, Pressable, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { IslandToastProvider } from "@/components/IslandToast";
 
 configureForegroundNotifications();
 
@@ -74,7 +75,9 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <AppThemeProvider>
-        <RootNavigator />
+        <IslandToastProvider>
+          <RootNavigator />
+        </IslandToastProvider>
       </AppThemeProvider>
     </GestureHandlerRootView>
   );

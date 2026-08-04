@@ -17,6 +17,7 @@ import { AppText as Text } from "@/components/AppText";
 import { AppSymbol } from "@/components/AppSymbol";
 import { useAppTheme } from "@/components/AppTheme";
 import { alpha } from "@/lib/color";
+import { localizeCategoryName } from "@/lib/categoryNames";
 
 export const CATEGORY_CHIP_WIDTH = 94;
 export const CATEGORY_CHIP_GAP = 8;
@@ -91,7 +92,7 @@ function CategoryChip({
           fallback={<Text style={{ color: isActive ? "#fff" : item.color }}>•</Text>}
         />
         <Text className="mt-1 text-xs font-medium" style={{ color: isActive ? "#fff" : item.color }}>
-          {item.name}
+          {localizeCategoryName(item.name)}
         </Text>
       </Pressable>
     </Animated.View>

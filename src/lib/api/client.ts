@@ -99,17 +99,19 @@ export function apiPut<T>(path: string, body?: unknown, init: RequestInit = {}):
 export async function apiUploadFile<T>(
   path: string,
   file: { uri: string; type: string },
-  init: { fieldName: string; method?: "POST" | "PUT" | "PATCH"; parameters?: Record<string, string> },
+  init: { fieldName: string; method?: "POST" | "PUT" | "PATCH"; parameters?: Record<string, string>; signal?: AbortSignal },
 ): Promise<T> {
   const cookie = authClient.getCookie();
-  const result = await new File(file.uri).upload(`${apiBaseURL}${path}`, {
+  const upload = new File(file.uri).createUploadTask(`${apiBaseURL}${path}`, {
     httpMethod: init.method ?? "POST",
     uploadType: UploadType.MULTIPART,
     fieldName: init.fieldName,
     mimeType: file.type,
     parameters: init.parameters,
     headers: cookie ? { Cookie: cookie } : undefined,
+    signal: init.signal,
   });
+  const result = await upload.uploadAsync();
   let json: { data?: T; error?: string } = {};
   if (result.body) {
     try {

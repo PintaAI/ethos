@@ -27,10 +27,11 @@ export function createManagementInvite(managementId: string): Promise<ServerMana
   return apiPost<ServerManagementInvite>(`/managements/${encodeURIComponent(managementId)}/invites`);
 }
 
-export function updateManagementImage(managementId: string, image: PickedUploadImage): Promise<ServerManagementImageUpdate> {
+export function updateManagementImage(managementId: string, image: PickedUploadImage, signal?: AbortSignal): Promise<ServerManagementImageUpdate> {
   return apiUploadFile<ServerManagementImageUpdate>(`/managements/${encodeURIComponent(managementId)}/image`, image, {
     method: "PUT",
     fieldName: "image",
+    signal,
   });
 }
 

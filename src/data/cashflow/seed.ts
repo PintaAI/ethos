@@ -9,21 +9,23 @@ const MANAGEMENTS = [
 ] as const;
 
 const CATEGORIES = [
-  { name: "Gaji", color: "#16a34a", icon: "banknote.fill", io: "Income" },
-  { name: "Freelance", color: "#22c55e", icon: "briefcase.fill", io: "Income" },
-  { name: "Makanan", color: "#ca8a04", icon: "fork.knife", io: "Expenses" },
-  { name: "Transport", color: "#ea580c", icon: "car.fill", io: "Expenses" },
-  { name: "Belanja", color: "#dc2626", icon: "basket.fill", io: "Expenses" },
-  { name: "Tagihan", color: "#2563eb", icon: "bolt.fill", io: "Expenses" },
+  { name: "Gaji", color: "#22c55e", icon: "wallet.pass.fill", io: "Income" },
+  { name: "Freelance", color: "#3b82f6", icon: "briefcase.fill", io: "Income" },
+  { name: "Makanan", color: "#ef4444", icon: "birthday.cake.fill", io: "Expenses" },
+  { name: "Transportasi", color: "#f97316", icon: "bus.fill", io: "Expenses" },
+  { name: "Belanja", color: "#eab308", icon: "basket.fill", io: "Expenses" },
+  { name: "Tagihan", color: "#22c55e", icon: "receipt.fill", io: "Expenses" },
+  { name: "Hiburan", color: "#a855f7", icon: "gamecontroller.fill", io: "Expenses" },
 ] as const;
 
 const ENTRY_TEMPLATES = [
   { name: "Monthly salary", category: "Gaji", io: "Income", nominal: 7250000 },
   { name: "Product sprint invoice", category: "Freelance", io: "Income", nominal: 1850000 },
   { name: "Lunch and coffee", category: "Makanan", io: "Expenses", nominal: 96000 },
-  { name: "MRT and ride share", category: "Transport", io: "Expenses", nominal: 76000 },
+  { name: "MRT and ride share", category: "Transportasi", io: "Expenses", nominal: 76000 },
   { name: "Weekly groceries", category: "Belanja", io: "Expenses", nominal: 284000 },
   { name: "Electricity token", category: "Tagihan", io: "Expenses", nominal: 350000 },
+  { name: "Movie night", category: "Hiburan", io: "Expenses", nominal: 85000 },
 ] as const;
 
 type SeedTransaction = Pick<SQLiteDatabase, "runAsync">;
@@ -53,6 +55,7 @@ function entriesForDay(daysAgo: number) {
   if (dayOfMonth === 10 || dayOfMonth === 24) dailyTemplates.push(ENTRY_TEMPLATES[1]);
   if (dayOfMonth === 7 || dayOfMonth === 21) dailyTemplates.push(ENTRY_TEMPLATES[4]);
   if (dayOfMonth === 15) dailyTemplates.push(ENTRY_TEMPLATES[5]);
+  if (dayOfMonth === 18) dailyTemplates.push(ENTRY_TEMPLATES[6]);
 
   return dailyTemplates;
 }
@@ -141,7 +144,7 @@ export async function seedCashflowDatabase(db: SQLiteDatabase) {
       await seedEntriesForManagement(txn, management, createdAt);
 
       for (const label of ["Kopi", "Makan siang", "Parkir", "Grab", "Token listrik"]) {
-        const category = label === "Token listrik" ? "Tagihan" : label === "Grab" || label === "Parkir" ? "Transport" : "Makanan";
+        const category = label === "Token listrik" ? "Tagihan" : label === "Grab" || label === "Parkir" ? "Transportasi" : "Makanan";
         await txn.runAsync(
           `INSERT INTO quick_fills (id, label, amount, category_id, management_id, created_at, updated_at, sync_status)
            VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')`,

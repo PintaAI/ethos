@@ -9,6 +9,7 @@ import { useAppTheme } from "@/components/AppTheme";
 import { useCurrency } from "@/components/CurrencyProvider";
 import { useSyncStatus } from "@/components/SyncProvider";
 import { alpha } from "@/lib/color";
+import { localizeCategoryName } from "@/lib/categoryNames";
 
 export type CashflowStats = {
   totalIncome: number;
@@ -390,7 +391,7 @@ export function CashflowStatsCard({ stats, hideMoreButton = false, managementNam
                     <SkeletonBlock className="h-3 w-32 rounded-full" color={skeletonColor} />
                   ) : (
                     <RNText numberOfLines={1} className="flex-1 text-xs" style={{ color: appTheme.colors.muted }}>
-                      {index + 1}. {category.category}
+                      {index + 1}. {localizeCategoryName(category.category)}
                     </RNText>
                   )}
                   {isLoading ? (

@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { Alert, Pressable, View } from "react-native";
 import { type SFSymbol } from "expo-symbols";
+import { useTranslation } from "react-i18next";
 import { AppSymbol } from "@/components/AppSymbol";
 import { AppText as RNText } from "@/components/AppText";
 import { useAppTheme } from "@/components/AppTheme";
@@ -8,7 +9,8 @@ import { useCurrency } from "@/components/CurrencyProvider";
 import { DayDetailPanel } from "@/components/cashflow/DayDetailPanel";
 import type { CashflowEntry } from "@/components/cashflow/CashflowTable";
 import { alpha } from "@/lib/color";
-import { toDateKey } from "@/lib/date";
+import { localizeCategoryName } from "@/lib/categoryNames";
+import { localeFromLanguage, toDateKey } from "@/lib/date";
 
 type CalendarData = Record<string, { entries: CashflowEntry[]; income: number; expenses: number }>;
 
@@ -46,10 +48,12 @@ function MonthCalendar({
   onDaySelect: (date: Date) => void;
 }) {
   const appTheme = useAppTheme();
+  const { t, i18n } = useTranslation();
   const { format } = useCurrency();
   const days = useMemo(() => getCalendarDays(currentMonth), [currentMonth]);
   const today = useMemo(() => new Date(), []);
-  const monthLabel = currentMonth.toLocaleDateString("id-ID", { month: "long", year: "numeric" });
+  const locale = localeFromLanguage(i18n.language);
+  const monthLabel = currentMonth.toLocaleDateString(locale, { month: "long", year: "numeric" });
   const monthSummary = useMemo(() => {
     const year = currentMonth.getFullYear();
     const month = currentMonth.getMonth();
@@ -71,9 +75,9 @@ function MonthCalendar({
     return Array.from({ length: 7 }, (_, i) => {
       const d = new Date(base);
       d.setDate(base.getDate() + i);
-      return d.toLocaleDateString("id-ID", { weekday: "short" });
+      return d.toLocaleDateString(locale, { weekday: "short" });
     });
-  }, []);
+  }, [locale]);
 
   const positive = appTheme.colors.positive;
   const negative = appTheme.colors.negative;
@@ -187,9 +191,9 @@ function MonthCalendar({
 
       <View className="mt-1 flex-row flex-wrap justify-center gap-x-3 gap-y-1 px-1">
         {[
-          { label: "Income", icon: "arrow.down.circle.fill" as const, value: monthSummary.income, color: positive },
-          { label: "Expenses", icon: "arrow.up.circle.fill" as const, value: monthSummary.expenses, color: negative },
-          { label: "Net", icon: "equal.circle.fill" as const, value: monthSummary.net, color: appTheme.colors.foreground },
+          { label: t('analytics.income'), icon: "arrow.down.circle.fill" as const, value: monthSummary.income, color: positive },
+          { label: t('analytics.expenses'), icon: "arrow.up.circle.fill" as const, value: monthSummary.expenses, color: negative },
+          { label: t('analytics.net'), icon: "equal.circle.fill" as const, value: monthSummary.net, color: appTheme.colors.foreground },
         ].map((item) => (
           <View
             key={item.label}
@@ -209,6 +213,7 @@ function MonthCalendar({
 }
 
 export function CashflowCalendar({ entries }: CashflowCalendarProps) {
+  const { t } = useTranslation();
   const { format } = useCurrency();
   const [selectedDay, setSelectedDay] = useState<Date | undefined>(new Date());
   const [currentMonth, setCurrentMonth] = useState(() => {
@@ -243,7 +248,7 @@ export function CashflowCalendar({ entries }: CashflowCalendarProps) {
       <DayDetailPanel
         date={selectedDay ?? null}
         entries={selectedEntries}
-        onEntryPress={(entry) => Alert.alert(entry.name, `${format(entry.nominal)}\n${entry.category ?? "Tanpa kategori"}\n${entry.createdBy ?? "Unknown"}`)}
+        onEntryPress={(entry) => Alert.alert(entry.name, `${format(entry.nominal)}\n${localizeCategoryName(entry.category) ?? t("cashflow.withoutCategory")}\n${entry.createdBy ?? "Unknown"}`)}
       />
     </View>
   );

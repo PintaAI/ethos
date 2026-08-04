@@ -102,7 +102,7 @@ function FrequencyChoice({ label, icon, selected, onPress }: { label: string; ic
 
 export default function AutomaticEntryFormSheet() {
   const appTheme = useAppTheme();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const currency = useCurrency();
   const { categories, recurringEntries, createRecurringEntry, deleteRecurringEntry } = useCashflowData();
   const [name, setName] = useState("");
@@ -273,7 +273,7 @@ export default function AutomaticEntryFormSheet() {
                   {t("autoEntry.nextRun")}
                 </Text>
                 <Text className="mt-0.5 text-base font-bold" style={{ color: appTheme.colors.foreground }}>
-                  {formatDateKey(nextDate)}
+                  {formatDateKey(nextDate, { day: "2-digit", month: "short", year: "numeric" }, i18n.language === "id" ? "id-ID" : "en-US")}
                 </Text>
               </View>
               <Text className="text-sm font-semibold" style={{ color: appTheme.colors.primary }}>
@@ -319,7 +319,7 @@ export default function AutomaticEntryFormSheet() {
                       {[currency.format(entry.nominal, { compact: true }), ioLabel, frequencyLabel, category?.name ?? t("autoEntry.noCategory")].join(" · ")}
                     </Text>
                     <Text className="mt-1 text-xs font-semibold" style={{ color: appTheme.colors.primary }}>
-                      {t("autoEntry.nextLabel", { date: formatDateKey(entry.nextDate) })}
+                      {t("autoEntry.nextLabel", { date: formatDateKey(entry.nextDate, { day: "2-digit", month: "short", year: "numeric" }, i18n.language === "id" ? "id-ID" : "en-US") })}
                     </Text>
                   </View>
                   <Pressable

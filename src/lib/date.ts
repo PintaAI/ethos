@@ -44,9 +44,13 @@ export function getMondayOfWeek(date: Date): Date {
   return startOfDay(nextDate);
 }
 
+export function localeFromLanguage(language?: string | null): string {
+  return language === "id" ? "id-ID" : "en-US";
+}
+
 export function formatLocalizedDate(
   date: Date,
-  locale = "id-ID",
+  locale = "en-US",
   options: Intl.DateTimeFormatOptions = { day: "numeric", month: "short", year: "numeric" },
 ): string {
   return date.toLocaleDateString(locale, options);
@@ -55,7 +59,7 @@ export function formatLocalizedDate(
 export function formatDateKey(
   dateKey: string,
   options: Intl.DateTimeFormatOptions = { day: "2-digit", month: "short", year: "numeric" },
-  locale = "id-ID",
+  locale = "en-US",
 ): string {
   return formatLocalizedDate(parseDateKey(dateKey), locale, options);
 }

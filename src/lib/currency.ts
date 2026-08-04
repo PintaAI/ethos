@@ -77,9 +77,13 @@ export function formatCurrencyAmount(
   if (compact && CUSTOM_COMPACT_CURRENCIES.has(currencyCode)) {
     const absolute = Math.abs(amount);
     const sign = amount < 0 ? "-" : "";
-    const formatShort = (value: number) => new Intl.NumberFormat(locale, {
-      maximumFractionDigits: Number.isInteger(value) ? 0 : 1,
-    }).format(value);
+    const formatShort = (value: number) => {
+      const fractionDigits = Number.isInteger(value) ? 0 : 1;
+      return new Intl.NumberFormat(locale, {
+        minimumFractionDigits: fractionDigits,
+        maximumFractionDigits: fractionDigits,
+      }).format(value);
+    };
 
     if (currencyCode === "IDR") {
       if (absolute >= 1_000_000_000) return `${sign}${currency.symbol}${formatShort(absolute / 1_000_000_000)} M`;
@@ -108,6 +112,7 @@ export function formatCurrencyAmount(
       style: "currency",
       currency: currencyCode,
       minimumFractionDigits: 0,
+      maximumFractionDigits: 1,
       notation: "compact",
       compactDisplay: "short",
     }).format(amount);

@@ -25,6 +25,7 @@ import { useAuth } from "@/components/AuthProvider";
 import { useSQLiteContext } from "expo-sqlite";
 import { alpha } from "@/lib/color";
 import { toDateKey, parseDateKey } from "@/lib/date";
+import { useIslandToast } from "@/components/IslandToast";
 
 function FormSymbol({ name, color, size = 16 }: { name: SFSymbol; color: string; size?: number }) {
   return <AppSymbol name={name} size={size} tintColor={color} fallback={<Text style={{ color }}>•</Text>} />;
@@ -121,6 +122,7 @@ export default function EntryForm() {
   const currency = useCurrency();
   const db = useSQLiteContext();
   const { user } = useAuth();
+  const { showIslandToast } = useIslandToast();
   const { id, date, sharedDraft, draftName, draftAmount, draftCategory, draftIo } = useLocalSearchParams<{
     id?: string;
     date?: string;
@@ -422,6 +424,10 @@ export default function EntryForm() {
         });
       }
 
+      showIslandToast({
+        icon: "checkmark.circle.fill",
+        label: isEditing ? t("entry.changesSaved") : t("entry.transactionSaved"),
+      });
       clearForm();
       router.back();
     } catch (error) {

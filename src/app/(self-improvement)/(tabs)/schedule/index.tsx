@@ -23,7 +23,7 @@ const SLEEP_COLOR = TIME_BOX_COLORS[0].toUpperCase();
 const WORK_COLOR = TIME_BOX_COLORS[2].toUpperCase();
 
 export default function ScheduleScreen() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { open } = useDrawer();
   const appTheme = useAppTheme();
   const { today, habits, habitLogs, dayPresets, getTimeBoxesForDate, clearTimeBoxesForDate, deleteTimeBox, planHabit, setTimeBoxCompleted, updateTimeBoxRange } = useSelfImprovement();
@@ -131,7 +131,7 @@ export default function ScheduleScreen() {
           </Pressable>
           <Pressable onPress={() => setDate(today)} className="items-center px-3">
             <Text className="font-bold" style={{ color: appTheme.colors.foreground }}>
-              {date === today ? t("timeBoxing.today") : formatDateKey(date, { weekday: "long", day: "numeric", month: "short" })}
+              {date === today ? t("timeBoxing.today") : formatDateKey(date, { weekday: "long", day: "numeric", month: "short" }, i18n.language === "id" ? "id-ID" : "en-US")}
             </Text>
             <Text className="text-xs" style={{ color: appTheme.colors.muted }}>{completedCount}/{dayBoxes.length} {t("timeBoxing.completed")}</Text>
           </Pressable>

@@ -148,9 +148,9 @@ export type CashflowDataState = {
   activity: ActivityOverview;
   analytics: CashflowAnalytics;
   setActiveManagementId: (managementId: string) => Promise<void>;
-  setManagementImage: (managementId: string, image: string, imageTheme: ManagementImageTheme | null) => Promise<void>;
+  setManagementImage: (managementId: string, image: string | null, imageTheme: ManagementImageTheme | null) => Promise<void>;
   updateManagementImageTheme: (managementId: string, imageTheme: ManagementImageTheme) => Promise<void>;
-  createManagement: (input: CreateManagementInput) => Promise<void>;
+  createManagement: (input: CreateManagementInput) => Promise<string | null>;
   updateManagement: (managementId: string, input: UpdateManagementInput) => Promise<void>;
   deleteManagement: (managementId: string) => Promise<void>;
   listManagementMembers: (managementId: string) => Promise<CashflowManagementMember[]>;

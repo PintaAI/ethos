@@ -489,7 +489,8 @@ async function quickFillBody(
   };
   if (local.category_id) {
     const catRemote = await getLocalCategoryRemoteIdByLocalId(db, local.category_id);
-    if (catRemote) body.categoryId = catRemote;
+    if (!catRemote) return null;
+    body.categoryId = catRemote;
   }
   return body;
 }
@@ -662,7 +663,8 @@ async function recurringBody(
   };
   if (local.category_id) {
     const catRemote = await getLocalCategoryRemoteIdByLocalId(db, local.category_id);
-    if (catRemote) body.categoryId = catRemote;
+    if (!catRemote) return null;
+    body.categoryId = catRemote;
   }
   return body;
 }

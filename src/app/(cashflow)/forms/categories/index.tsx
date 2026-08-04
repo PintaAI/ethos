@@ -13,6 +13,7 @@ import { BudgetField } from "@/components/cashflow/CategoryBudgetField";
 import { useCashflowData } from "@/data/cashflow/CashflowDataProvider";
 import type { BudgetPeriod, CashflowCategory } from "@/data/cashflow/types";
 import { alpha } from "@/lib/color";
+import { localizeCategoryName } from "@/lib/categoryNames";
 
 const BUDGET_PERIODS = [
   { key: "daily", labelKey: "categories.daily" },
@@ -131,7 +132,7 @@ export default function CategoriesFormSheet() {
                   </View>
                   <View className="min-w-0 flex-1">
                     <Text numberOfLines={1} className="text-base font-bold" style={{ color: appTheme.colors.foreground }}>
-                      {category.name}
+                      {localizeCategoryName(category.name)}
                     </Text>
                     <Text className="text-xs" style={{ color: appTheme.colors.muted }}>
                       {t("categories.budgetSummary", { value: budgetSummary(category, format, t("categories.noBudget")) })}

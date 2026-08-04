@@ -25,6 +25,7 @@ import type {
 } from "./types";
 import type { CategoryHistoryItem } from "./categorySuggestions";
 import { takeDueRecurringDates } from "./recurringMaterialization";
+import { deleteOwnedWalletImage } from "@/lib/walletImages";
 
 type ManagementRow = {
   id: string;
@@ -111,6 +112,16 @@ export type MaterializedRecurringEntry = {
 };
 
 export const RECURRING_MATERIALIZATION_LIMIT = 50;
+
+const DEFAULT_CATEGORIES = [
+  { name: "Makanan", color: "#ef4444", icon: "birthday.cake.fill" },
+  { name: "Transportasi", color: "#f97316", icon: "bus.fill" },
+  { name: "Belanja", color: "#eab308", icon: "basket.fill" },
+  { name: "Tagihan", color: "#22c55e", icon: "receipt.fill" },
+  { name: "Hiburan", color: "#a855f7", icon: "gamecontroller.fill" },
+  { name: "Gaji", color: "#22c55e", icon: "wallet.pass.fill" },
+  { name: "Freelance", color: "#3b82f6", icon: "briefcase.fill" },
+] as const;
 
 const EMPTY_STATS: CashflowStats = {
   totalIncome: 0,
@@ -265,13 +276,28 @@ export async function listManagementMembers(db: SQLiteDatabase, managementId: st
 }
 
 export async function listCategories(db: SQLiteDatabase, managementId: string): Promise<CashflowCategory[]> {
-  const rows = await db.getAllAsync<CategoryRow>(
+  let rows = await db.getAllAsync<CategoryRow>(
     `SELECT id, name, color, icon, budget_daily, budget_weekly, budget_monthly, management_id
      FROM categories
      WHERE management_id = ? AND deleted_at IS NULL
      ORDER BY name`,
     managementId,
   );
+
+  if (rows.length === 0) {
+    await db.withExclusiveTransactionAsync(async (txn) => {
+      for (const category of DEFAULT_CATEGORIES) {
+        await createCategory(txn, managementId, category);
+      }
+    });
+    rows = await db.getAllAsync<CategoryRow>(
+      `SELECT id, name, color, icon, budget_daily, budget_weekly, budget_monthly, management_id
+       FROM categories
+       WHERE management_id = ? AND deleted_at IS NULL
+       ORDER BY name`,
+      managementId,
+    );
+  }
 
   return rows.map((row) => ({
     id: row.id,
@@ -550,11 +576,13 @@ export async function listCategoryHistory(
 
 export async function createManagement(db: SQLiteDatabase, input: CreateManagementInput) {
   const trimmedName = input.name.trim();
-  if (!trimmedName) return;
+  if (!trimmedName) return null;
+  let managementId: string | null = null;
 
   await db.withExclusiveTransactionAsync(async (txn) => {
     const createdAt = nowIso();
     const id = createId("management");
+    managementId = id;
     const image = input.image?.trim() || null;
     const user = await txn.getFirstAsync<{ id: string }>("SELECT id FROM users WHERE deleted_at IS NULL ORDER BY created_at LIMIT 1");
 
@@ -583,6 +611,7 @@ export async function createManagement(db: SQLiteDatabase, input: CreateManageme
       id,
     );
   });
+  return managementId;
 }
 
 export async function updateManagement(db: SQLiteDatabase, managementId: string, input: UpdateManagementInput) {
@@ -609,6 +638,7 @@ export async function updateManagement(db: SQLiteDatabase, managementId: string,
 }
 
 export async function deleteManagement(db: SQLiteDatabase, managementId: string) {
+  const management = await db.getFirstAsync<{ image: string | null }>("SELECT image FROM managements WHERE id = ?", managementId);
   await db.withExclusiveTransactionAsync(async (txn) => {
     const updatedAt = nowIso();
 
@@ -637,6 +667,7 @@ export async function deleteManagement(db: SQLiteDatabase, managementId: string)
       await txn.runAsync("DELETE FROM app_preferences WHERE key = 'active_management_id'");
     }
   });
+  deleteOwnedWalletImage(management?.image);
 }
 
 export async function updateManagementImageTheme(db: SQLiteDatabase, managementId: string, imageTheme: ManagementImageTheme) {
@@ -648,7 +679,7 @@ export async function updateManagementImageTheme(db: SQLiteDatabase, managementI
   );
 }
 
-export async function setManagementImage(db: SQLiteDatabase, managementId: string, image: string, imageTheme: ManagementImageTheme | null) {
+export async function setManagementImage(db: SQLiteDatabase, managementId: string, image: string | null, imageTheme: ManagementImageTheme | null) {
   await db.runAsync(
     `UPDATE managements SET image = ?, image_theme_json = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL`,
     image,
@@ -658,7 +689,11 @@ export async function setManagementImage(db: SQLiteDatabase, managementId: strin
   );
 }
 
-export async function createCategory(db: SQLiteDatabase, managementId: string, input: CreateCategoryInput) {
+export async function createCategory(
+  db: Pick<SQLiteDatabase, "getFirstAsync" | "runAsync">,
+  managementId: string,
+  input: CreateCategoryInput,
+) {
   const trimmedName = input.name.trim();
   if (!trimmedName) return null;
 
@@ -1002,7 +1037,7 @@ export function buildActivity(entries: CashflowEntry[], daysBack = 182): Activit
   };
 }
 
-export function buildStats(entries: CashflowEntry[]): CashflowStats {
+export function buildStats(entries: CashflowEntry[], locale = "id-ID"): CashflowStats {
   if (entries.length === 0) return EMPTY_STATS;
 
   const now = new Date();
@@ -1055,12 +1090,12 @@ export function buildStats(entries: CashflowEntry[]): CashflowStats {
     },
     currentWeek: {
       weekNumber: getWeekNumber(now),
-      range: `${formatLocalizedDate(week.start, "id-ID", { day: "numeric", month: "short" })} - ${formatLocalizedDate(week.end, "id-ID", { day: "numeric", month: "short" })}`,
+      range: `${formatLocalizedDate(week.start, locale, { day: "numeric", month: "short" })} - ${formatLocalizedDate(week.end, locale, { day: "numeric", month: "short" })}`,
       income: weekIncome,
       expenses: weekExpenses,
     },
     currentMonth: {
-      label: formatLocalizedDate(now, "id-ID", { month: "long", year: "numeric" }),
+      label: formatLocalizedDate(now, locale, { month: "long", year: "numeric" }),
       income: monthIncome,
       expenses: monthExpenses,
     },
@@ -1071,7 +1106,7 @@ export function buildStats(entries: CashflowEntry[]): CashflowStats {
   };
 }
 
-export function buildAnalytics(entries: CashflowEntry[], categories: CashflowCategory[]): CashflowAnalytics {
+export function buildAnalytics(entries: CashflowEntry[], categories: CashflowCategory[], locale = "id-ID"): CashflowAnalytics {
   const colorByCategory = new Map(categories.map((category) => [category.name, category.color ?? undefined]));
   const byCategory = new Map<string, { total: number; count: number }>();
   const byMonth = new Map<string, { income: number; expenses: number }>();
@@ -1121,7 +1156,7 @@ export function buildAnalytics(entries: CashflowEntry[], categories: CashflowCat
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([month, value]) => ({
         month,
-        monthLabel: parseDateKey(`${month}-01`).toLocaleDateString("id-ID", { month: "short", year: "numeric" }),
+        monthLabel: parseDateKey(`${month}-01`).toLocaleDateString(locale, { month: "short", year: "numeric" }),
         income: value.income,
         expenses: value.expenses,
       })),

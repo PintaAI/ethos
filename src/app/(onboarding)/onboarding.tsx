@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { type FlatList, Pressable, View, useWindowDimensions } from "react-native";
 import { BottomSheet, Host, RNHostView } from "@expo/ui";
-import { router, Stack } from "expo-router";
+import { router, Stack, type Href } from "expo-router";
 import { useTranslation } from "react-i18next";
 import Animated, {
   interpolate,
@@ -14,7 +14,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { AppText as Text } from "@/components/AppText";
 import { useAppTheme } from "@/components/AppTheme";
-import { setPreference } from "@/lib/preferences";
+import { useAuth } from "@/components/AuthProvider";
 import { alpha } from "@/lib/color";
 import { ActivityHeatmap } from "@/components/cashflow/ActivityHeatmap";
 import { CashflowStatsCard } from "@/components/cashflow/CashflowStatsCard";
@@ -189,12 +189,12 @@ function SlidePreview({ body }: { body: PreviewTabKey }) {
 
 export default function OnboardingScreen() {
   const appTheme = useAppTheme();
+  const auth = useAuth();
   const { t } = useTranslation();
   const { width } = useWindowDimensions();
   const pagerRef = useRef<FlatList<OnboardingSlide>>(null);
   const [page, setPage] = useState(0);
   const [showAccountOptions, setShowAccountOptions] = useState(false);
-  const [isCompleting, setIsCompleting] = useState(false);
   const scrollX = useSharedValue(0);
 
   const slides: OnboardingSlide[] = [
@@ -229,23 +229,13 @@ export default function OnboardingScreen() {
     setPage(nextPage);
   };
 
-  const completeOnboarding = async (destination: "/auth" | "/home") => {
-    if (isCompleting) return;
-
-    setIsCompleting(true);
-    try {
-      await setPreference("hasSkippedOnboarding", true);
-      setShowAccountOptions(false);
-
-      if (destination === "/auth") {
-        router.push(destination);
-      } else {
-        router.replace(destination);
-      }
-    } catch (error) {
-      console.warn("Failed to save onboarding preference", error);
-      setIsCompleting(false);
+  const chooseMode = (mode: "cloud" | "offline") => {
+    setShowAccountOptions(false);
+    if (mode === "cloud" && !auth.isAuthenticated) {
+      router.push({ pathname: "/auth", params: { returnTo: "onboarding-wallet" } });
+      return;
     }
+    router.push({ pathname: "/(onboarding)/wallet-setup", params: { mode } } as unknown as Href);
   };
 
   const scrollHandler = useAnimatedScrollHandler({
@@ -347,35 +337,54 @@ export default function OnboardingScreen() {
         <Host matchContents colorScheme={appTheme.colorScheme}>
           <BottomSheet isPresented={showAccountOptions} onDismiss={() => setShowAccountOptions(false)}>
             <RNHostView matchContents>
-              <View className="gap-3 px-6 pb-8 pt-5" style={{ width: Math.min(width, 560) }}>
-              <Text className="text-2xl font-black tracking-tight" style={{ color: appTheme.colors.foreground }}>
-                {t("onboarding.accountTitle")}
-              </Text>
-              <Text className="mb-3 text-sm leading-5" style={{ color: appTheme.colors.muted }}>
-                {t("onboarding.accountPrompt")}
-              </Text>
-              <Pressable
-                accessibilityRole="button"
-                disabled={isCompleting}
-                className="items-center rounded-full px-6 py-4"
-                style={{ backgroundColor: appTheme.colors.primary }}
-                onPress={() => completeOnboarding("/auth")}
-              >
-                <Text className="font-bold" style={{ color: appTheme.colors.inverseForeground }}>
-                  {t("onboarding.signIn")}
-                </Text>
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                disabled={isCompleting}
-                className="items-center rounded-full px-6 py-4"
-                style={{ backgroundColor: alpha(appTheme.colors.primary, 0.12) }}
-                onPress={() => completeOnboarding("/home")}
-              >
-                <Text className="font-bold" style={{ color: appTheme.colors.primary }}>
-                  {t("onboarding.continueWithoutAccount")}
-                </Text>
-              </Pressable>
+              <View className="gap-5 px-6 pb-8 pt-5" style={{ width: Math.min(width, 560) }}>
+                <View className="gap-2">
+                  <Text className="text-2xl font-black tracking-tight" style={{ color: appTheme.colors.foreground }}>
+                    {t("onboarding.accountTitle")}
+                  </Text>
+                  <Text className="text-sm leading-5" style={{ color: appTheme.colors.muted }}>
+                    {t("onboarding.accountPrompt")}
+                  </Text>
+                </View>
+                <View className="gap-2 px-1">
+                  {(["backup", "devices", "restore", "neverLose", "share"] as const).map((benefit) => (
+                    <View key={benefit} className="flex-row items-center gap-2.5">
+                      <View className="h-5 w-5 items-center justify-center rounded-full" style={{ backgroundColor: alpha(appTheme.colors.primary, 0.12) }}>
+                        <AppSymbol name="checkmark" size={11} tintColor={appTheme.colors.primary} />
+                      </View>
+                      <Text className="text-sm font-semibold" style={{ color: appTheme.colors.foreground }}>
+                        {t(`onboarding.storage.benefits.${benefit}`)}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={t("onboarding.storage.cloudAction")}
+                  className="flex-row items-center justify-center gap-2 rounded-full px-6 py-4"
+                  style={{ backgroundColor: appTheme.colors.primary }}
+                  onPress={() => chooseMode("cloud")}
+                >
+                  <AppSymbol name="arrow.triangle.2.circlepath" size={18} tintColor={appTheme.colors.inverseForeground} />
+                  <Text className="font-bold" style={{ color: appTheme.colors.inverseForeground }}>
+                    {t("onboarding.storage.cloudAction")}
+                  </Text>
+                </Pressable>
+                <View className="items-center gap-1">
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={t("onboarding.storage.offlineAction")}
+                    className="rounded-full px-5 py-2.5"
+                    onPress={() => chooseMode("offline")}
+                  >
+                    <Text className="font-bold" style={{ color: appTheme.colors.primary }}>
+                      {t("onboarding.storage.offlineAction")}
+                    </Text>
+                  </Pressable>
+                  <Text className="text-center text-xs" style={{ color: appTheme.colors.muted }}>
+                    {t("onboarding.storage.offlineDescription")}
+                  </Text>
+                </View>
               </View>
             </RNHostView>
           </BottomSheet>

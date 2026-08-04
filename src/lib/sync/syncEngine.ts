@@ -1,7 +1,8 @@
 import type { SQLiteDatabase } from "expo-sqlite";
 import { ApiError } from "@/lib/api/client";
 import { createEntry, deleteEntry, listAllEntries, updateEntry } from "@/lib/api/entries";
-import { createManagement, deleteManagement, listManagements, updateManagement } from "@/lib/api/managements";
+import { createManagement, deleteManagement, listManagements, updateManagement, updateManagementImage } from "@/lib/api/managements";
+import { deleteOwnedWalletImage, isOwnedWalletImage, walletImageUploadMetadata } from "@/lib/walletImages";
 import { createCategory, deleteCategory, listCategories, updateCategory } from "@/lib/api/categories";
 import { createQuickFill, deleteQuickFill, listQuickFills, updateQuickFill } from "@/lib/api/quick-fills";
 import { deleteOverallBudget, listOverallBudgets, saveOverallBudget } from "@/lib/api/budgets";
@@ -188,6 +189,42 @@ async function pushManagements(db: SQLiteDatabase, summary: SyncSummary, scope: 
       }
     } catch (error) {
       console.warn("[sync] push management failed", local.id, error);
+      summary.errors += 1;
+    }
+  }
+}
+
+async function pushPendingManagementImages(db: SQLiteDatabase, summary: SyncSummary, signal?: AbortSignal) {
+  const pending = await db.getAllAsync<{ id: string; remote_id: string; image: string; image_theme_json: string | null }>(
+    "SELECT id, remote_id, image, image_theme_json FROM managements WHERE deleted_at IS NULL AND remote_id IS NOT NULL AND image IS NOT NULL",
+  );
+  for (const management of pending) {
+    throwIfCancelled(signal);
+    const upload = walletImageUploadMetadata(management.image);
+    if (!upload) continue;
+    try {
+      const result = await updateManagementImage(management.remote_id, upload, signal);
+      const serverImage = result.management.image;
+      if (!serverImage) throw new Error("Wallet image upload returned no path");
+      let imageThemeJson = management.image_theme_json;
+      if (imageThemeJson) {
+        const imageTheme = JSON.parse(imageThemeJson) as { image?: string };
+        imageTheme.image = serverImage;
+        imageThemeJson = JSON.stringify(imageTheme);
+      }
+      await db.withExclusiveTransactionAsync(async (txn) => {
+        await txn.runAsync(
+          "UPDATE managements SET image = ?, image_theme_json = ? WHERE id = ? AND image = ?",
+          serverImage,
+          imageThemeJson,
+          management.id,
+          management.image,
+        );
+      });
+      deleteOwnedWalletImage(management.image);
+      summary.pushed += 1;
+    } catch (error) {
+      console.warn("[sync] push wallet image failed", management.id, error);
       summary.errors += 1;
     }
   }
@@ -475,8 +512,8 @@ async function pullManagements(db: SQLiteDatabase, summary: SyncSummary, scope: 
     throwIfCancelled(signal);
     scope.remoteManagementIds.add(server.id);
     try {
-      const existing = await db.getFirstAsync<{ id: string; updated_at: string }>(
-        `SELECT id, updated_at FROM managements WHERE remote_id = ? LIMIT 1`,
+      const existing = await db.getFirstAsync<{ id: string; updated_at: string; image: string | null; image_theme_json: string | null }>(
+        `SELECT id, updated_at, image, image_theme_json FROM managements WHERE remote_id = ? LIMIT 1`,
         server.id,
       );
       if (!existing) {
@@ -489,6 +526,9 @@ async function pullManagements(db: SQLiteDatabase, summary: SyncSummary, scope: 
         const fields = serverManagementToLocal(server, stamp);
         const mutable = fields as Partial<ManagementUpsertFields>;
         delete mutable.id;
+        if (isOwnedWalletImage(existing.image)) {
+          delete mutable.image;
+        }
         await upsertByRemoteId(db, "managements", server.id, fields);
         summary.pulled += 1;
       }
@@ -757,6 +797,8 @@ export async function syncNow(db: SQLiteDatabase, options: SyncOptions = {}): Pr
     const scope = await buildSyncScope(db);
 
     await pushManagements(db, summary, scope, signal);
+    throwIfCancelled(signal);
+    await pushPendingManagementImages(db, summary, signal);
     throwIfCancelled(signal);
     await pushCategories(db, summary, scope, signal);
     throwIfCancelled(signal);

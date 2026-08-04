@@ -144,7 +144,7 @@ function Section({ title, icon, children }: { title: string; icon: SFSymbol; chi
 
 export default function TransferFormSheet() {
   const appTheme = useAppTheme();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const currency = useCurrency();
   const { activeManagementId, managements, createTransfer } = useCashflowData();
   const [fromManagementId, setFromManagementId] = useState(activeManagementId ?? managements[0]?.id ?? "");
@@ -319,7 +319,7 @@ export default function TransferFormSheet() {
               <DateChoice
                 key={index}
                 label={index === 0 ? t("entry.dateOptions.today") : index === 1 ? t("entry.dateOptions.yesterday") : t("entry.dateOptions.date")}
-                subtitle={option.daysAgo !== undefined ? formatDateKey(toDateKey(getDateDaysAgo(option.daysAgo)), { day: "numeric", month: "short" }) : formatDateKey(toDateKey(customDate ?? new Date()), { day: "numeric", month: "short" })}
+                subtitle={option.daysAgo !== undefined ? formatDateKey(toDateKey(getDateDaysAgo(option.daysAgo)), { day: "numeric", month: "short" }, i18n.language === "id" ? "id-ID" : "en-US") : formatDateKey(toDateKey(customDate ?? new Date()), { day: "numeric", month: "short" }, i18n.language === "id" ? "id-ID" : "en-US")}
                 selected={dateIndex === index}
                 onPress={() => {
                   setDateIndex(index);

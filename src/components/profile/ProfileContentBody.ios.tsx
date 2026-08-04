@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { ImageSource } from "expo-image";
 import { View } from "react-native";
@@ -24,6 +25,7 @@ import { useCurrency } from "@/components/CurrencyProvider";
 import { ProfileHeader } from "@/components/profile/ProfileHeader";
 import { alpha } from "@/lib/color";
 import { SUPPORTED_CURRENCIES } from "@/lib/currency";
+import { useIslandToast } from "@/components/IslandToast";
 
 const SETTINGS_ICON_SIZE = 15;
 
@@ -86,8 +88,10 @@ export function ProfileContentBody({
 }: ProfileContentBodyProps) {
   const appTheme = useAppTheme();
   const { t, i18n } = useTranslation();
+  const [cloudToggleKey, setCloudToggleKey] = useState(0);
   const { theme, setTheme } = appTheme;
   const { compactAmountsEnabled, currency, setCompactAmountsEnabled, setCurrency } = useCurrency();
+  const { showIslandToast } = useIslandToast();
   const rowBackground = alpha(appTheme.colors.muted, appTheme.isDark ? 0.18 : 0.1);
   const profileHeaderVerticalPadding = Math.max(16, Math.round(appTheme.textSize * 1.1));
   const rowModifiers = [listRowBackground(rowBackground)];
@@ -195,8 +199,12 @@ export function ProfileContentBody({
 
           <Section title={t("cloud.title")}>
             <Toggle
+              key={cloudToggleKey}
               isOn={cloudSyncEnabled}
-              onIsOnChange={onCloudSyncEnabledChange}
+              onIsOnChange={(value) => {
+                if (!isAuthenticated) setCloudToggleKey((k) => k + 1);
+                onCloudSyncEnabledChange(value);
+              }}
               modifiers={[...rowModifiers, tint(appTheme.colors.primary)]}
             >
               <Label
@@ -331,6 +339,18 @@ export function ProfileContentBody({
 
           {__DEV__ ? (
             <Section title={t("profile.development")}>
+              <Button
+                onPress={() => showIslandToast({
+                  icon: "checkmark.circle.fill",
+                  accessibilityLabel: t("entry.transactionSaved"),
+                })}
+                modifiers={[...rowModifiers, tint(appTheme.colors.primary)]}
+              >
+                <Label
+                  title={t("profile.previewSaveFeedback")}
+                  icon={<Image systemName="checkmark.circle.fill" size={SETTINGS_ICON_SIZE} color={appTheme.colors.primary} />}
+                />
+              </Button>
               <Button
                 onPress={() => onOpenOnboarding()}
                 modifiers={[...rowModifiers, tint(appTheme.colors.primary)]}
