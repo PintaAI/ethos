@@ -6,11 +6,13 @@ import type { ThemeSet } from "@/components/provider/AppTheme";
 export type SyncStatus = "synced" | "pending" | "updated" | "deleted" | "conflict";
 export type BudgetPeriod = "daily" | "weekly" | "monthly";
 export type RecurringFrequency = "daily" | "weekly" | "monthly";
+export type ManagementCategory = "CASH" | "INVESTMENT" | "CREDIT_CARD" | "DEBIT_CARD" | "LOAN" | "SAVINGS";
 
 export type CashflowManagement = {
   id: string;
   remoteId: string | null;
   name: string;
+  category: ManagementCategory | null;
   image: string | null;
   imageTheme: ManagementImageTheme | null;
   createdAt: string;
@@ -37,6 +39,7 @@ export type CashflowManagementMember = {
 
 export type UpdateManagementInput = {
   name: string;
+  category: ManagementCategory | null;
   image: string | null;
 };
 

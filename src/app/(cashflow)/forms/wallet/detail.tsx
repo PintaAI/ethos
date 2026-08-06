@@ -11,7 +11,7 @@ import { AndroidFormFooter, AndroidFormFooterButton } from "@/components/Android
 import { useAppTheme } from "@/components/provider/AppTheme";
 import { IconSelector } from "@/components/IconSelector";
 import { useCashflowData } from "@/data/cashflow/CashflowDataProvider";
-import type { CashflowManagementMember } from "@/data/cashflow/types";
+import type { CashflowManagementMember, ManagementCategory } from "@/data/cashflow/types";
 import { alpha } from "@/lib/color";
 import { createManagementInvite, updateManagementImage } from "@/lib/api/managements";
 import { authBaseURL } from "@/lib/auth-client";
@@ -26,6 +26,8 @@ function isPicture(image: string | null) {
   return !!image && !image.startsWith("symbol:");
 }
 
+const MANAGEMENT_CATEGORIES: ManagementCategory[] = ["CASH", "SAVINGS", "INVESTMENT", "CREDIT_CARD", "DEBIT_CARD", "LOAN"];
+
 export default function WalletDetailScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>();
   const appTheme = useAppTheme();
@@ -36,6 +38,7 @@ export default function WalletDetailScreen() {
   const walletStateKey = management?.id ?? (isNewWallet ? "new" : "missing");
   const [loadedWalletKey, setLoadedWalletKey] = useState(walletStateKey);
   const [name, setName] = useState(management?.name ?? "");
+  const [category, setCategory] = useState<ManagementCategory | null>(management?.category ?? null);
   const [image, setImage] = useState(management?.image ?? "symbol:wallet.pass.fill");
   const [members, setMembers] = useState<CashflowManagementMember[]>([]);
   const [isSaving, setIsSaving] = useState(false);
@@ -55,6 +58,7 @@ export default function WalletDetailScreen() {
   if (loadedWalletKey !== walletStateKey) {
     setLoadedWalletKey(walletStateKey);
     setName(management?.name ?? "");
+    setCategory(management?.category ?? null);
     setImage(management?.image ?? "symbol:wallet.pass.fill");
     setPreviewImageUri(null);
     setPendingUploadImage(null);
@@ -125,7 +129,7 @@ export default function WalletDetailScreen() {
       }
 
       if (isNewWallet) {
-        createdManagementId = await createManagement({ name, image: pendingUploadImage ? null : savedImage });
+        createdManagementId = await createManagement({ name, category, image: pendingUploadImage ? null : savedImage });
         if (!createdManagementId) throw new Error(t("wallet.saveFailedMessage"));
 
         if (pendingUploadImage && persistedImageUri) {
@@ -149,7 +153,7 @@ export default function WalletDetailScreen() {
           if (themeSlug) appTheme.setTheme(themeSlug);
         }
       } else if (id) {
-        await updateManagement(id, { name, image: savedImage });
+        await updateManagement(id, { name, category, image: savedImage });
       }
       router.back();
     } catch (error) {
@@ -370,6 +374,34 @@ export default function WalletDetailScreen() {
               {isUploadingImage ? <ActivityIndicator color={appTheme.colors.primary} size="small" /> : null}
             </Pressable>
           ) : null}
+        </View>
+
+        <View className="gap-3">
+          <Text className="px-1 text-xs font-semibold uppercase tracking-[2px]" style={{ color: appTheme.colors.muted }}>
+            {t("wallet.categoryLabel")}
+          </Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+            {[null, ...MANAGEMENT_CATEGORIES].map((option) => {
+              const selected = category === option;
+              return (
+                <Pressable
+                  key={option ?? "none"}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: selected }}
+                  onPress={() => setCategory(option)}
+                  className="min-h-11 items-center justify-center rounded-full border px-4"
+                  style={{
+                    backgroundColor: selected ? alpha(appTheme.colors.primary, 0.14) : surface,
+                    borderColor: selected ? appTheme.colors.primary : borderColor,
+                  }}
+                >
+                  <Text className="text-sm font-bold" style={{ color: selected ? appTheme.colors.primary : appTheme.colors.foreground }}>
+                    {option ? t(`wallet.categories.${option}`) : t("wallet.noCategory")}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
         </View>
 
         <View className="gap-3">

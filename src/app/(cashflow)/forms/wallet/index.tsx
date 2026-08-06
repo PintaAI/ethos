@@ -28,6 +28,7 @@ export default function WalletFormSheet() {
   const borderColor = alpha(appTheme.colors.foreground, appTheme.isDark ? 0.09 : 0.07);
   const rowSurface = alpha(appTheme.colors.foreground, appTheme.isDark ? 0.045 : 0.035);
   const surface = alpha(appTheme.colors.foreground, appTheme.isDark ? 0.035 : 0.025);
+  const grandTotal = managements.reduce((total, management) => total + management.balance, 0);
 
   const handleSelectManagement = async (management: (typeof managements)[number]) => {
     try {
@@ -140,6 +141,18 @@ export default function WalletFormSheet() {
           </Text>
         </View>
 
+        <View className="rounded-[28px] border p-5" style={{ borderColor, backgroundColor: surface }}>
+          <Text className="text-xs font-semibold uppercase tracking-[2px]" style={{ color: appTheme.colors.muted }}>
+            {t("wallet.grandTotal")}
+          </Text>
+          <Text className="mt-2 text-4xl font-black tracking-tight" style={{ color: grandTotal < 0 ? appTheme.colors.negative : appTheme.colors.foreground }}>
+            {format(grandTotal)}
+          </Text>
+          <Text className="mt-1 text-sm" style={{ color: appTheme.colors.muted }}>
+            {t("wallet.grandTotalDescription")}
+          </Text>
+        </View>
+
         <View className="gap-3">
           {managements.map((management) => {
             const isActive = management.id === activeManagementId;
@@ -178,6 +191,11 @@ export default function WalletFormSheet() {
                     <Text className="text-xs" style={{ color: appTheme.colors.muted }}>
                       {format(management.balance, { compact: true })} · {t("wallet.memberCount", { count: management.memberCount })}
                     </Text>
+                    {management.category ? (
+                      <Text className="mt-0.5 text-xs font-semibold" style={{ color: appTheme.colors.primary }}>
+                        {t(`wallet.categories.${management.category}`)}
+                      </Text>
+                    ) : null}
                   </View>
                   {isActive ? (
                     <View

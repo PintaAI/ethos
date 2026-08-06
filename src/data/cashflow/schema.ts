@@ -1,7 +1,7 @@
 import type { SQLiteDatabase } from "expo-sqlite";
 import { withDbClearBarrier } from "@/lib/sync/dbLock";
 
-const DATABASE_VERSION = 20;
+const DATABASE_VERSION = 21;
 
 async function hasColumn(db: SQLiteDatabase, table: string, column: string) {
   const columns = await db.getAllAsync<{ name: string }>(`PRAGMA table_info(${table})`);
@@ -38,6 +38,7 @@ export async function migrateCashflowDatabase(db: SQLiteDatabase) {
         id TEXT PRIMARY KEY NOT NULL,
         remote_id TEXT,
         name TEXT NOT NULL,
+        category TEXT,
         image TEXT,
         image_theme_json TEXT,
         created_at TEXT NOT NULL,
@@ -509,6 +510,13 @@ export async function migrateCashflowDatabase(db: SQLiteDatabase) {
         );
     `);
     currentVersion = 20;
+  }
+
+  if (currentVersion < 21) {
+    if (!(await hasColumn(db, "managements", "category"))) {
+      await db.execAsync("ALTER TABLE managements ADD COLUMN category TEXT;");
+    }
+    currentVersion = 21;
   }
 
   await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);

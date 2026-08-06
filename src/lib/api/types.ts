@@ -3,10 +3,12 @@ export type Io = "Income" | "Expenses";
 export type BudgetPeriod = "daily" | "weekly" | "monthly" | "yearly";
 
 export type RecurringFrequency = "daily" | "weekly" | "monthly" | "yearly";
+export type ManagementCategory = "CASH" | "INVESTMENT" | "CREDIT_CARD" | "DEBIT_CARD" | "LOAN" | "SAVINGS";
 
 export type ServerManagement = {
   id: string;
   name: string;
+  category: ManagementCategory | null;
   image: string | null;
   memberCount?: number;
   createdAt?: string;

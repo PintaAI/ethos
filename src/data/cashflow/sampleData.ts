@@ -96,6 +96,7 @@ export const sampleManagement: CashflowManagement = {
   id: "mgmt-sample",
   remoteId: null,
   name: "Personal",
+  category: null,
   image: null,
   imageTheme: null,
   createdAt: "2026-01-01T00:00:00.000Z",

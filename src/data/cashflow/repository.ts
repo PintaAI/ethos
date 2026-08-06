@@ -19,6 +19,7 @@ import type {
   CreateManagementInput,
   CreateQuickFillInput,
   CreateRecurringEntryInput,
+  ManagementCategory,
   ManagementImageTheme,
   RecurringFrequency,
   UpdateManagementInput,
@@ -31,6 +32,7 @@ type ManagementRow = {
   id: string;
   remote_id: string | null;
   name: string;
+  category: ManagementCategory | null;
   image: string | null;
   image_theme_json: string | null;
   created_at: string;
@@ -161,6 +163,7 @@ function mapManagement(row: ManagementRow): CashflowManagement {
     id: row.id,
     remoteId: row.remote_id,
     name: row.name,
+    category: row.category,
     image: row.image,
     imageTheme: parseManagementImageTheme(row.image_theme_json),
     createdAt: row.created_at,
@@ -233,6 +236,7 @@ export async function listManagements(db: SQLiteDatabase) {
       m.id,
       m.remote_id,
       m.name,
+      m.category,
       m.image,
       m.image_theme_json,
       m.created_at,
@@ -587,9 +591,10 @@ export async function createManagement(db: SQLiteDatabase, input: CreateManageme
     const user = await txn.getFirstAsync<{ id: string }>("SELECT id FROM users WHERE deleted_at IS NULL ORDER BY created_at LIMIT 1");
 
     await txn.runAsync(
-      "INSERT INTO managements (id, name, image, created_at, updated_at, sync_status) VALUES (?, ?, ?, ?, ?, 'pending')",
+      "INSERT INTO managements (id, name, category, image, created_at, updated_at, sync_status) VALUES (?, ?, ?, ?, ?, ?, 'pending')",
       id,
       trimmedName,
+      input.category,
       image,
       createdAt,
       createdAt,
@@ -624,12 +629,14 @@ export async function updateManagement(db: SQLiteDatabase, managementId: string,
   await db.runAsync(
     `UPDATE managements SET
        name = ?,
+       category = ?,
        image_theme_json = CASE WHEN image IS ? THEN image_theme_json ELSE NULL END,
        image = ?,
        updated_at = ?,
        sync_status = CASE WHEN sync_status = 'pending' THEN 'pending' ELSE 'updated' END
      WHERE id = ? AND deleted_at IS NULL`,
     trimmedName,
+    input.category,
     image,
     image,
     updatedAt,

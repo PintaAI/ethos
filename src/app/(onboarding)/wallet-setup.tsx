@@ -201,7 +201,7 @@ export default function WalletSetup() {
     try {
       if (picked) persistedUri = await persistWalletImage(picked);
 
-      const managementId = existing?.id ?? await cashflow.createManagement({ name, image: null });
+      const managementId = existing?.id ?? await cashflow.createManagement({ name, category: null, image: null });
       if (!managementId) throw new Error(t("walletSetup.saveError"));
       committedManagementId = managementId;
       createdManagement = !existing;
@@ -215,7 +215,7 @@ export default function WalletSetup() {
 
       if (existing) {
         mutatedExisting = true;
-        await cashflow.updateManagement(managementId, { name, image: existing.image });
+        await cashflow.updateManagement(managementId, { name, category: existing.category, image: existing.image });
       }
 
       if (picked && previewTheme && persistedUri && storedTheme) {
@@ -262,7 +262,7 @@ export default function WalletSetup() {
         if (createdManagement && committedManagementId) {
           await cashflow.deleteManagement(committedManagementId);
         } else if (existing && mutatedExisting) {
-          await cashflow.updateManagement(existing.id, { name: existing.name, image: existing.image });
+          await cashflow.updateManagement(existing.id, { name: existing.name, category: existing.category, image: existing.image });
           await cashflow.setManagementImage(existing.id, existing.image, previousImageTheme);
         }
 

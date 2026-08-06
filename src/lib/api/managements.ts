@@ -1,12 +1,12 @@
 import { apiDelete, apiGet, apiPatch, apiPost, apiUploadFile } from "./client";
-import type { ServerCurrentManagement, ServerManagement, ServerManagementImageUpdate, ServerManagementInvite } from "./types";
+import type { ManagementCategory, ServerCurrentManagement, ServerManagement, ServerManagementImageUpdate, ServerManagementInvite } from "./types";
 import type { PickedUploadImage } from "../imageUpload";
 
 export function listManagements(init: RequestInit = {}): Promise<ServerManagement[]> {
   return apiGet<ServerManagement[]>("/managements", init);
 }
 
-export function createManagement(body: { name: string; clientId?: string }, init: RequestInit = {}): Promise<ServerManagement> {
+export function createManagement(body: { name: string; category: ManagementCategory | null; clientId?: string }, init: RequestInit = {}): Promise<ServerManagement> {
   return apiPost<ServerManagement>("/managements", body, init);
 }
 
@@ -15,7 +15,7 @@ export function getActiveManagement(managementId?: string): Promise<ServerCurren
   return apiGet<ServerCurrentManagement | null>(`/managements/current${qs}`);
 }
 
-export function updateManagement(id: string, body: { name: string }, init: RequestInit = {}): Promise<ServerManagement> {
+export function updateManagement(id: string, body: { name: string; category: ManagementCategory | null }, init: RequestInit = {}): Promise<ServerManagement> {
   return apiPatch<ServerManagement>(`/managements/${encodeURIComponent(id)}`, body, init);
 }
 

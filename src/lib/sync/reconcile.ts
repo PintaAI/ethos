@@ -3,6 +3,7 @@ import {
   type BudgetPeriod,
   type CreateEntryBody,
   type Io,
+  type ManagementCategory,
   type RecurringFrequency,
   type ServerCategory,
   type ServerEntry,
@@ -263,6 +264,7 @@ export type ManagementRow = {
   id: string;
   remote_id: string | null;
   name: string;
+  category: ManagementCategory | null;
   image: string | null;
   image_theme_json: string | null;
   created_at: string;
@@ -274,6 +276,7 @@ export type ManagementUpsertFields = {
   id: string;
   remote_id: string;
   name: string;
+  category: ManagementCategory | null;
   image: string | null;
   member_count: number;
   created_at: string;
@@ -290,6 +293,7 @@ export function serverManagementToLocal(
     id: createId("management"),
     remote_id: server.id,
     name: server.name,
+    category: server.category ?? null,
     image: server.image ?? null,
     member_count: server.memberCount ?? 0,
     created_at: server.createdAt ?? nowIso,
@@ -299,12 +303,12 @@ export function serverManagementToLocal(
   };
 }
 
-export function localManagementToCreate(local: ManagementRow): { name: string; clientId: string } {
-  return { name: local.name, clientId: local.id };
+export function localManagementToCreate(local: ManagementRow): { name: string; category: ManagementCategory | null; clientId: string } {
+  return { name: local.name, category: local.category, clientId: local.id };
 }
 
-export function localManagementToUpdate(local: ManagementRow): { name: string } {
-  return { name: local.name };
+export function localManagementToUpdate(local: ManagementRow): { name: string; category: ManagementCategory | null } {
+  return { name: local.name, category: local.category };
 }
 
 // ---------------------------------------------------------------------------
