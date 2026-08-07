@@ -6,10 +6,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { GlassBox } from "@/components/GlassBox";
 import { AppText as Text } from "@/components/AppText";
 import { useAppTheme } from "@/components/provider/AppTheme";
+import { HOME_SECTION_ROUTES } from "@/config/homeSections";
 import { useLifeFlow } from "@/data/lifeflow/LifeFlowProvider";
 import { TIME_BOX_COLORS } from "@/components/lifeflow/TimeMapDial";
 import { alpha } from "@/lib/color";
-import { setPreference } from "@/lib/preferences";
+import { getPreference, setPreference } from "@/lib/preferences";
 import { collectOnboardingHabitDrafts, findMatchingCustomHabit, HABIT_RECURRENCES, normalizeHabitName, type OnboardingHabitDraft } from "@/lib/onboardingHabits";
 import { useSyncStatus } from "@/components/provider/SyncProvider";
 
@@ -40,7 +41,6 @@ export default function LifeFlowSetup() {
   const existingMatch = findMatchingCustomHabit(growth.habits, name);
   const existingHabits = growth.habits.filter((habit) => !habit.isAppCheckIn && !habit.isJournalHabit);
   const borderColor = alpha(appTheme.colors.foreground, appTheme.isDark ? 0.09 : 0.07);
-  const surface = alpha(appTheme.colors.foreground, appTheme.isDark ? 0.035 : 0.025);
   const canFinish = valid || drafts.length > 0;
 
   function resetDraft() {
@@ -75,7 +75,8 @@ export default function LifeFlowSetup() {
       }
       await sync.setCloudSyncEnabled(mode === "cloud");
       await setPreference("hasSkippedOnboarding", true);
-      router.replace("/home");
+      const homeSection = await getPreference("lastHomeSection");
+      router.replace(HOME_SECTION_ROUTES[homeSection]);
     } catch (error) {
       Alert.alert(t("lifeFlowSetup.saveErrorTitle"), error instanceof Error ? error.message : t("lifeFlowSetup.saveError"));
     } finally { setSavingAction(null); }
@@ -104,7 +105,7 @@ export default function LifeFlowSetup() {
           </Text>
         </View>
 
-        <View className="gap-6 rounded-[32px] border p-4" style={{ backgroundColor: surface, borderColor }}>
+        <View className="gap-6 p-4" style={{ overflow: "visible" }}>
           {growth.loading ? <ActivityIndicator color={appTheme.colors.primary} /> : null}
 
           <View className="gap-3">
@@ -181,7 +182,7 @@ export default function LifeFlowSetup() {
             <Text className="text-xs font-bold uppercase tracking-[2px]" style={{ color: appTheme.colors.muted }}>
               {t("lifeFlowSetup.tinyHabit")}
             </Text>
-            <View className="flex-row flex-wrap gap-2">
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ overflow: "visible" }} contentContainerStyle={{ gap: 8, overflow: "visible" }}>
               {habitDurations.map((minutes) => {
                 const selected = preferredDuration === minutes;
                 const label = minutes === 1
@@ -211,14 +212,14 @@ export default function LifeFlowSetup() {
                   </GlassBox>
                 );
               })}
-            </View>
+            </ScrollView>
           </View>
 
           <View className="gap-3">
             <Text className="text-xs font-bold uppercase tracking-[2px]" style={{ color: appTheme.colors.muted }}>
               {t("lifeFlowSetup.rhythm")}
             </Text>
-            <View className="flex-row flex-wrap gap-2">
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ overflow: "visible" }} contentContainerStyle={{ gap: 8, overflow: "visible" }}>
               {(["daily", "weekdays", "weekends", "custom"] as Recurrence[]).map((item) => {
                 const selected = recurrence === item;
                 return (
@@ -243,7 +244,7 @@ export default function LifeFlowSetup() {
                   </GlassBox>
                 );
               })}
-            </View>
+            </ScrollView>
             {recurrence === "custom" ? (
               <View className="flex-row justify-between pt-1">
                 {[0, 1, 2, 3, 4, 5, 6].map((day) => {
@@ -323,7 +324,7 @@ export default function LifeFlowSetup() {
 
           <GlassBox
             isInteractive
-            tintColor={alpha(appTheme.colors.primary, appTheme.isDark ? 0.22 : 0.14)}
+            tintColor={appTheme.colors.primary}
             glassEffectStyle="clear"
             style={{ borderRadius: 9999, opacity: valid && !growth.loading ? 1 : 0.45 }}
           >
@@ -334,7 +335,7 @@ export default function LifeFlowSetup() {
               onPress={addDraft}
               className="items-center rounded-full px-6 py-4"
             >
-              <Text className="font-bold" style={{ color: appTheme.colors.primary }}>
+              <Text className="font-bold" style={{ color: appTheme.colors.inverseForeground }}>
                 {editing === null ? t("lifeFlowSetup.addAnother") : t("common.save")}
               </Text>
             </Pressable>

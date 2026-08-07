@@ -4,6 +4,7 @@ import { AppState } from "react-native";
 
 import { addDaysToDateKey, toDateKey } from "@/lib/date";
 import { reconcileTimeBoxNotificationsAsync } from "@/lib/timeBoxNotifications";
+import { subscribeActiveManagement } from "@/lib/activeManagementEvents";
 import { withDbLock } from "@/lib/sync/dbLock";
 import { resolveTimeBoxesForDate, resolveTimeBoxesForRange } from "./recurrence";
 import {
@@ -93,6 +94,15 @@ export function LifeFlowProvider({ children }: { children: ReactNode }) {
       });
     }
   }), [db]);
+
+  useEffect(() => {
+    return subscribeActiveManagement(() => {
+      setLoading(true);
+      void refresh(true)
+        .catch((error) => console.warn("Failed to switch LifeFlow wallet", error))
+        .finally(() => setLoading(false));
+    });
+  }, [refresh]);
 
   useEffect(() => {
     const timeout = setTimeout(() => {

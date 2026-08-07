@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { presetBlocksConflictWithDate, recurringPresetsConflict, resolveTimeBoxesForDate } from "./recurrence.ts";
+import { presetBlocksConflictWithDate, recurringPresetsConflict, repeatForSchedule, resolveTimeBoxesForDate, weekdaysForRepeat } from "./recurrence.ts";
 
 const daily = {
   id: "preset",
@@ -10,6 +10,13 @@ const daily = {
   blocks: [{ id: "sleep", title: "Sleep", startTime: "22:00", endTime: "06:00", breakDurations: [], color: "#123456" }],
   schedule: { id: "schedule", startDate: "2026-01-01", frequency: "daily", weekdays: [0, 1, 2, 3, 4, 5, 6] },
 };
+
+test("maps the simple repeat facade to schedule fields", () => {
+  assert.equal(repeatForSchedule(daily.schedule), "daily");
+  assert.deepEqual(weekdaysForRepeat("daily", [3]), [0, 1, 2, 3, 4, 5, 6]);
+  assert.deepEqual(weekdaysForRepeat("weekly", [3, 1]), [1, 3]);
+  assert.deepEqual(weekdaysForRepeat("none", [3]), []);
+});
 
 test("daily recurrence resolves years ahead with a stable id", () => {
   const boxes = resolveTimeBoxesForDate("2036-07-30", [], [daily]);

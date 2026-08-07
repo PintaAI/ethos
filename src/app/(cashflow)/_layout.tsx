@@ -42,7 +42,9 @@ const entryFormOptions = Platform.OS === "ios"
   ? formSheetOptions
   : androidSheetOptions([0.72, 1]);
 
-const walletOptions = Platform.OS === "ios" ? formSheetOptions : androidSheetOptions([0.6, 1]);
+const walletOptions = Platform.OS === "ios"
+  ? { ...formSheetOptions, sheetAllowedDetents: [0.5, 1] as [number, number] }
+  : androidSheetOptions([0.6, 1]);
 const walletDetailOptions = Platform.OS === "ios" ? formSheetOptions : androidSheetOptions([1]);
 const categoriesOptions = Platform.OS === "ios"
   ? { ...formSheetOptions, sheetAllowedDetents: [0.9] as [number] }

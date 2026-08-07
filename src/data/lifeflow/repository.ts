@@ -1,10 +1,11 @@
 import type { SQLiteDatabase } from "expo-sqlite";
+import { getActiveManagementId } from "@/data/cashflow/repository";
 
 import { findNextAvailableTimeSlot, getTimeBoxFocusDuration, timeBoxRangesAreValid, canAllocateTimeBox, timeBoxesOverlap } from "@/lib/timeBox";
 import { presetBlocksConflictWithDate, recurringPresetsConflict, resolveTimeBoxesForDate, scheduleAppliesOnDate } from "./recurrence";
 import type { ApplyDayPresetResult, CreateDayPresetInput, CreateHabitInput, CreateTimeBoxInput, DayPreset, DayPresetFrequency, Habit, HabitLog, PlanHabitResult, TimeBox, UpdateDayPresetInput, UpdateHabitInput, UpdateTimeBoxInput } from "./types";
 
-type HabitRow = { id: string; name: string; color: string; weekdays_json: string; preferred_duration: number; is_app_check_in: number; is_journal_habit: number; created_at: string };
+type HabitRow = { id: string; name: string; color: string; weekdays_json: string; preferred_duration: number; system_type: string | null; created_at: string };
 type HabitLogRow = { habit_id: string; date: string };
 type TimeBoxRow = {
   id: string;
@@ -22,10 +23,14 @@ type TimeBoxRow = {
   preset_block_id: string | null;
 };
 
-const APP_CHECK_IN_PREFERENCE_KEY = "atomic_habits_app_check_in_id";
 const APP_CHECK_IN_COLOR = "#5B8CFF";
-const JOURNAL_HABIT_PREFERENCE_KEY = "habits_daily_journal_id";
 const JOURNAL_HABIT_COLOR = "#A855F7";
+
+async function activeManagementId(db: SQLiteDatabase): Promise<string> {
+  const id = await getActiveManagementId(db);
+  if (!id) throw new Error("An active wallet is required for LifeFlow.");
+  return id;
+}
 
 function parseBreakDurations(value: string) {
   try {
@@ -57,14 +62,11 @@ function createId(prefix: string) {
 }
 
 export async function listHabits(db: SQLiteDatabase): Promise<Habit[]> {
+  const managementId = await activeManagementId(db);
   const rows = await db.getAllAsync<HabitRow>(
-    `SELECT habits.*,
-            CASE WHEN id = (SELECT value FROM app_preferences WHERE key = ?) THEN 1 ELSE 0 END AS is_app_check_in,
-            CASE WHEN id = (SELECT value FROM app_preferences WHERE key = ?) THEN 1 ELSE 0 END AS is_journal_habit
-     FROM habits
-     ORDER BY is_app_check_in DESC, is_journal_habit DESC, created_at, id`,
-    APP_CHECK_IN_PREFERENCE_KEY,
-    JOURNAL_HABIT_PREFERENCE_KEY,
+    `SELECT * FROM habits WHERE management_id = ?
+     ORDER BY CASE system_type WHEN 'app_check_in' THEN 0 WHEN 'journal' THEN 1 ELSE 2 END, created_at, id`,
+    managementId,
   );
   return rows.map((row) => ({
     id: row.id,
@@ -72,15 +74,17 @@ export async function listHabits(db: SQLiteDatabase): Promise<Habit[]> {
     color: row.color,
     weekdays: parseWeekdays(row.weekdays_json),
     preferredDuration: row.preferred_duration,
-    isAppCheckIn: row.is_app_check_in === 1,
-    isJournalHabit: row.is_journal_habit === 1,
+    isAppCheckIn: row.system_type === "app_check_in",
+    isJournalHabit: row.system_type === "journal",
     createdAt: row.created_at,
   }));
 }
 
 export async function listHabitLogs(db: SQLiteDatabase, fromDate: string): Promise<HabitLog[]> {
+  const managementId = await activeManagementId(db);
   const rows = await db.getAllAsync<HabitLogRow>(
-    "SELECT habit_id, date FROM habit_logs WHERE date >= ? ORDER BY date",
+    "SELECT habit_id, date FROM habit_logs WHERE management_id = ? AND date >= ? ORDER BY date",
+    managementId,
     fromDate,
   );
   return rows.map((row) => ({ habitId: row.habit_id, date: row.date }));
@@ -88,36 +92,31 @@ export async function listHabitLogs(db: SQLiteDatabase, fromDate: string): Promi
 
 async function ensureSystemHabit(
   db: SQLiteDatabase,
-  preferenceKey: string,
+  systemType: "app_check_in" | "journal",
   name: string,
   color: string,
 ): Promise<string> {
+  const managementId = await activeManagementId(db);
   let habitId = "";
   await db.withExclusiveTransactionAsync(async (txn) => {
-    const preference = await txn.getFirstAsync<{ value: string }>(
-      "SELECT value FROM app_preferences WHERE key = ?",
-      preferenceKey,
+    const existing = await txn.getFirstAsync<{ id: string }>(
+      "SELECT id FROM habits WHERE management_id = ? AND system_type = ?",
+      managementId,
+      systemType,
     );
-    const existing = preference
-      ? await txn.getFirstAsync<{ id: string }>("SELECT id FROM habits WHERE id = ?", preference.value)
-      : null;
     if (existing) {
       habitId = existing.id;
     } else {
       habitId = createId("habit");
       await txn.runAsync(
-        "INSERT INTO habits (id, name, color, weekdays_json, created_at) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO habits (id, name, color, weekdays_json, created_at, management_id, system_type) VALUES (?, ?, ?, ?, ?, ?, ?)",
         habitId,
         name,
         color,
         JSON.stringify([0, 1, 2, 3, 4, 5, 6]),
         new Date().toISOString(),
-      );
-      await txn.runAsync(
-        `INSERT INTO app_preferences (key, value) VALUES (?, ?)
-         ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-        preferenceKey,
-        habitId,
+        managementId,
+        systemType,
       );
     }
   });
@@ -125,109 +124,127 @@ async function ensureSystemHabit(
 }
 
 export async function ensureAppCheckIn(db: SQLiteDatabase, date: string): Promise<void> {
-  const habitId = await ensureSystemHabit(db, APP_CHECK_IN_PREFERENCE_KEY, "App check-in", APP_CHECK_IN_COLOR);
+  const habitId = await ensureSystemHabit(db, "app_check_in", "App check-in", APP_CHECK_IN_COLOR);
+  const managementId = await activeManagementId(db);
   await db.runAsync(
-    "INSERT OR IGNORE INTO habit_logs (habit_id, date, completed_at) VALUES (?, ?, ?)",
+    "INSERT OR IGNORE INTO habit_logs (habit_id, date, completed_at, management_id) VALUES (?, ?, ?, ?)",
     habitId,
     date,
     new Date().toISOString(),
+    managementId,
   );
 }
 
 export async function ensureJournalHabit(db: SQLiteDatabase): Promise<void> {
-  await ensureSystemHabit(db, JOURNAL_HABIT_PREFERENCE_KEY, "Daily Journal", JOURNAL_HABIT_COLOR);
+  await ensureSystemHabit(db, "journal", "Daily Journal", JOURNAL_HABIT_COLOR);
 }
 
 export async function recordJournalActivity(db: SQLiteDatabase, date: string): Promise<boolean> {
-  const habitId = await ensureSystemHabit(db, JOURNAL_HABIT_PREFERENCE_KEY, "Daily Journal", JOURNAL_HABIT_COLOR);
+  const habitId = await ensureSystemHabit(db, "journal", "Daily Journal", JOURNAL_HABIT_COLOR);
+  const managementId = await activeManagementId(db);
   const result = await db.runAsync(
-    "INSERT OR IGNORE INTO habit_logs (habit_id, date, completed_at) VALUES (?, ?, ?)",
+    "INSERT OR IGNORE INTO habit_logs (habit_id, date, completed_at, management_id) VALUES (?, ?, ?, ?)",
     habitId,
     date,
     new Date().toISOString(),
+    managementId,
   );
   return result.changes > 0;
 }
 
 async function isSystemHabit(db: SQLiteDatabase, id: string): Promise<boolean> {
+  const managementId = await activeManagementId(db);
   const row = await db.getFirstAsync(
-    "SELECT 1 FROM app_preferences WHERE key IN (?, ?) AND value = ?",
-    APP_CHECK_IN_PREFERENCE_KEY,
-    JOURNAL_HABIT_PREFERENCE_KEY,
+    "SELECT 1 FROM habits WHERE id = ? AND management_id = ? AND system_type IS NOT NULL",
     id,
+    managementId,
   );
   return row !== null;
 }
 
 export async function createHabit(db: SQLiteDatabase, input: CreateHabitInput): Promise<void> {
+  const managementId = await activeManagementId(db);
   await db.runAsync(
-    "INSERT INTO habits (id, name, color, weekdays_json, preferred_duration, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+    "INSERT INTO habits (id, name, color, weekdays_json, preferred_duration, created_at, management_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
     createId("habit"),
     input.name.trim(),
     input.color,
     JSON.stringify(input.weekdays),
     input.preferredDuration ?? 30,
     new Date().toISOString(),
+    managementId,
   );
 }
 
 export async function updateHabit(db: SQLiteDatabase, id: string, input: UpdateHabitInput): Promise<void> {
+  const managementId = await activeManagementId(db);
   if (await isSystemHabit(db, id)) return;
   await db.withExclusiveTransactionAsync(async (txn) => {
     await txn.runAsync(
-      "UPDATE habits SET name = ?, color = ?, weekdays_json = ?, preferred_duration = COALESCE(?, preferred_duration) WHERE id = ?",
+      "UPDATE habits SET name = ?, color = ?, weekdays_json = ?, preferred_duration = COALESCE(?, preferred_duration) WHERE id = ? AND management_id = ?",
       input.name.trim(),
       input.color,
       JSON.stringify(input.weekdays),
       input.preferredDuration ?? null,
       id,
+      managementId,
     );
     await txn.runAsync(
-      "UPDATE time_boxes SET title = ?, color = ? WHERE habit_id = ? AND completed = 0",
+      "UPDATE time_boxes SET title = ?, color = ? WHERE habit_id = ? AND management_id = ? AND completed = 0",
       input.name.trim(),
       input.color,
       id,
+      managementId,
     );
   });
 }
 
 export async function deleteHabit(db: SQLiteDatabase, id: string): Promise<void> {
+  const managementId = await activeManagementId(db);
   if (await isSystemHabit(db, id)) return;
   await db.withExclusiveTransactionAsync(async (txn) => {
-    await txn.runAsync("DELETE FROM time_boxes WHERE habit_id = ? AND completed = 0", id);
-    await txn.runAsync("DELETE FROM habits WHERE id = ?", id);
+    await txn.runAsync("DELETE FROM time_boxes WHERE habit_id = ? AND management_id = ? AND completed = 0", id, managementId);
+    await txn.runAsync("DELETE FROM habits WHERE id = ? AND management_id = ?", id, managementId);
   });
 }
 
 export async function setHabitCompleted(db: SQLiteDatabase, habitId: string, date: string, completed: boolean): Promise<void> {
+  const managementId = await activeManagementId(db);
   const journalHabit = await db.getFirstAsync(
-    "SELECT 1 FROM app_preferences WHERE key = ? AND value = ?",
-    JOURNAL_HABIT_PREFERENCE_KEY,
+    "SELECT 1 FROM habits WHERE id = ? AND management_id = ? AND system_type = 'journal'",
     habitId,
+    managementId,
   );
   if (journalHabit) return;
   await db.withExclusiveTransactionAsync(async (txn) => {
     if (completed) {
       await txn.runAsync(
-        "INSERT OR REPLACE INTO habit_logs (habit_id, date, completed_at) VALUES (?, ?, ?)",
+        `INSERT INTO habit_logs (habit_id, date, completed_at, management_id) VALUES (?, ?, ?, ?)
+         ON CONFLICT(habit_id, date) DO UPDATE SET completed_at = excluded.completed_at`,
         habitId,
         date,
         new Date().toISOString(),
+        managementId,
       );
     } else {
-      await txn.runAsync("DELETE FROM habit_logs WHERE habit_id = ? AND date = ?", habitId, date);
+      await txn.runAsync("DELETE FROM habit_logs WHERE habit_id = ? AND date = ? AND management_id = ?", habitId, date, managementId);
     }
     await txn.runAsync(
-      "UPDATE time_boxes SET completed = ? WHERE habit_id = ? AND date = ? AND dismissed = 0",
+      "UPDATE time_boxes SET completed = ? WHERE habit_id = ? AND date = ? AND management_id = ? AND dismissed = 0",
       completed ? 1 : 0,
       habitId,
       date,
+      managementId,
     );
   });
 }
 
 export async function listTimeBoxes(db: SQLiteDatabase): Promise<TimeBox[]> {
-  const rows = await db.getAllAsync<TimeBoxRow>("SELECT * FROM time_boxes ORDER BY date DESC, start_time, id");
+  const managementId = await activeManagementId(db);
+  const rows = await db.getAllAsync<TimeBoxRow>(
+    "SELECT * FROM time_boxes WHERE management_id = ? ORDER BY date DESC, start_time, id",
+    managementId,
+  );
   return rows.map((row) => ({
     id: row.id,
     date: row.date,
@@ -246,80 +263,91 @@ export async function listTimeBoxes(db: SQLiteDatabase): Promise<TimeBox[]> {
 }
 
 export async function createTimeBox(db: SQLiteDatabase, input: CreateTimeBoxInput): Promise<void> {
+  const managementId = await activeManagementId(db);
   await assertCanAllocate(db, input);
   const completed = input.habitId
-    ? await db.getFirstAsync("SELECT 1 FROM habit_logs WHERE habit_id = ? AND date = ?", input.habitId, input.date)
+    ? await db.getFirstAsync("SELECT 1 FROM habit_logs WHERE habit_id = ? AND date = ? AND management_id = ?", input.habitId, input.date, managementId)
     : null;
   await db.runAsync(
-    "INSERT INTO time_boxes (id, date, title, start_time, end_time, break_durations_json, color, completed, habit_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO time_boxes (id, date, title, start_time, end_time, break_durations_json, color, completed, habit_id, created_at, management_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     [createId("time-box"), input.date, input.title.trim(), input.startTime, input.endTime,
       JSON.stringify(input.breakDurations ?? []), input.color ?? null, completed ? 1 : 0,
-      input.habitId ?? null, new Date().toISOString()],
+      input.habitId ?? null, new Date().toISOString(), managementId],
   );
 }
 
 export async function setTimeBoxCompleted(db: SQLiteDatabase, box: TimeBox, completed: boolean): Promise<void> {
+  const managementId = await activeManagementId(db);
   await db.withExclusiveTransactionAsync(async (txn) => {
     await persistVirtualSnapshot(txn, box);
     const stored = await txn.getFirstAsync<{ habit_id: string | null; date: string }>(
-      "SELECT habit_id, date FROM time_boxes WHERE id = ?",
+      "SELECT habit_id, date FROM time_boxes WHERE id = ? AND management_id = ?",
       box.id,
+      managementId,
     );
-    await txn.runAsync("UPDATE time_boxes SET completed = ? WHERE id = ?", completed ? 1 : 0, box.id);
+    await txn.runAsync("UPDATE time_boxes SET completed = ? WHERE id = ? AND management_id = ?", completed ? 1 : 0, box.id, managementId);
     if (!stored?.habit_id) return;
     if (completed) {
       await txn.runAsync(
-        "INSERT OR REPLACE INTO habit_logs (habit_id, date, completed_at) VALUES (?, ?, ?)",
+        `INSERT INTO habit_logs (habit_id, date, completed_at, management_id) VALUES (?, ?, ?, ?)
+         ON CONFLICT(habit_id, date) DO UPDATE SET completed_at = excluded.completed_at`,
         stored.habit_id,
         stored.date,
         new Date().toISOString(),
+        managementId,
       );
     } else {
-      await txn.runAsync("DELETE FROM habit_logs WHERE habit_id = ? AND date = ?", stored.habit_id, stored.date);
+      await txn.runAsync("DELETE FROM habit_logs WHERE habit_id = ? AND date = ? AND management_id = ?", stored.habit_id, stored.date, managementId);
     }
   });
 }
 
 export async function updateTimeBoxRange(db: SQLiteDatabase, box: TimeBox, startTime: string, endTime: string): Promise<void> {
+  const managementId = await activeManagementId(db);
   await assertCanAllocate(db, { ...box, startTime, endTime }, box.id);
   await db.withExclusiveTransactionAsync(async (txn) => {
     await persistVirtualSnapshot(txn, box);
     const stored = await txn.getFirstAsync<{ habit_id: string | null; break_durations_json: string }>(
-      "SELECT habit_id, break_durations_json FROM time_boxes WHERE id = ?",
+      "SELECT habit_id, break_durations_json FROM time_boxes WHERE id = ? AND management_id = ?",
       box.id,
+      managementId,
     );
-    await txn.runAsync("UPDATE time_boxes SET start_time = ?, end_time = ? WHERE id = ?", startTime, endTime, box.id);
+    await txn.runAsync("UPDATE time_boxes SET start_time = ?, end_time = ? WHERE id = ? AND management_id = ?", startTime, endTime, box.id, managementId);
     if (stored?.habit_id) {
       await txn.runAsync(
-        "UPDATE habits SET preferred_duration = ? WHERE id = ?",
+        "UPDATE habits SET preferred_duration = ? WHERE id = ? AND management_id = ?",
         Math.max(5, getTimeBoxFocusDuration(startTime, endTime, parseBreakDurations(stored.break_durations_json))),
         stored.habit_id,
+        managementId,
       );
     }
   });
 }
 
 export async function updateTimeBox(db: SQLiteDatabase, box: TimeBox, input: UpdateTimeBoxInput): Promise<void> {
+  const managementId = await activeManagementId(db);
   await assertCanAllocate(db, { ...box, ...input }, box.id);
   await db.withExclusiveTransactionAsync(async (txn) => {
     await persistVirtualSnapshot(txn, box);
-    const stored = await txn.getFirstAsync<{ habit_id: string | null }>("SELECT habit_id FROM time_boxes WHERE id = ?", box.id);
+    const stored = await txn.getFirstAsync<{ habit_id: string | null }>("SELECT habit_id FROM time_boxes WHERE id = ? AND management_id = ?", box.id, managementId);
     await txn.runAsync(
       `UPDATE time_boxes
        SET title = ?, start_time = ?, end_time = ?, break_durations_json = ?, color = ?
-       WHERE id = ?`,
+       WHERE id = ? AND management_id = ?`,
       input.title.trim(),
       input.startTime,
       input.endTime,
       JSON.stringify(input.breakDurations),
       input.color,
       box.id,
+      managementId,
     );
     if (stored?.habit_id) {
       await txn.runAsync(
-        "UPDATE habits SET preferred_duration = ? WHERE id = ?",
+        "UPDATE habits SET preferred_duration = ? WHERE id = ? AND management_id = ?",
         Math.max(5, getTimeBoxFocusDuration(input.startTime, input.endTime, input.breakDurations)),
         stored.habit_id,
+        managementId,
       );
     }
   });
@@ -342,67 +370,76 @@ export async function planHabit(db: SQLiteDatabase, habitId: string, date: strin
 }
 
 export async function deleteTimeBox(db: SQLiteDatabase, box: TimeBox): Promise<void> {
+  const managementId = await activeManagementId(db);
   await persistVirtualSnapshot(db, box);
   await db.runAsync(
     `UPDATE time_boxes SET dismissed = 1
-     WHERE id = ? AND preset_schedule_id IS NOT NULL`,
+     WHERE id = ? AND management_id = ? AND preset_schedule_id IS NOT NULL`,
     box.id,
+    managementId,
   );
   await db.runAsync(
-    "DELETE FROM time_boxes WHERE id = ? AND preset_schedule_id IS NULL",
+    "DELETE FROM time_boxes WHERE id = ? AND management_id = ? AND preset_schedule_id IS NULL",
     box.id,
+    managementId,
   );
 }
 
 export async function clearTimeBoxesForDate(db: SQLiteDatabase, date: string): Promise<void> {
+  const managementId = await activeManagementId(db);
   const effective = resolveTimeBoxesForDate(date, await listTimeBoxes(db), await listDayPresets(db));
   await db.withExclusiveTransactionAsync(async (txn) => {
     for (const box of effective) await persistVirtualSnapshot(txn, box);
     await txn.runAsync(
-      "UPDATE time_boxes SET dismissed = 1 WHERE date = ? AND preset_schedule_id IS NOT NULL",
+      "UPDATE time_boxes SET dismissed = 1 WHERE date = ? AND management_id = ? AND preset_schedule_id IS NOT NULL",
       date,
+      managementId,
     );
     await txn.runAsync(
-      "DELETE FROM time_boxes WHERE date = ? AND preset_schedule_id IS NULL",
+      "DELETE FROM time_boxes WHERE date = ? AND management_id = ? AND preset_schedule_id IS NULL",
       date,
+      managementId,
     );
   });
 }
 
 export async function createDayPresetSchedule(db: SQLiteDatabase, input: CreateDayPresetInput): Promise<void> {
+  const managementId = await activeManagementId(db);
   assertPresetBlocksValid(input.blocks);
   if (input.frequency && input.startDate) await assertRecurringPresetValid(db, input);
   const presetId = createId("day-preset");
   const now = new Date().toISOString();
   await db.withExclusiveTransactionAsync(async (txn) => {
     await txn.runAsync(
-      "INSERT INTO day_presets (id, name, created_at) VALUES (?, ?, ?)",
+      "INSERT INTO day_presets (id, name, created_at, management_id) VALUES (?, ?, ?, ?)",
       presetId,
       input.name.trim(),
       now,
+      managementId,
     );
     for (const [index, block] of input.blocks.entries()) {
       await txn.runAsync(
         `INSERT INTO day_preset_blocks
-         (id, preset_id, title, start_time, end_time, break_durations_json, color, sort_order)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+         (id, preset_id, title, start_time, end_time, break_durations_json, color, sort_order, management_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [createId("day-preset-block"), presetId, block.title, block.startTime, block.endTime,
-          JSON.stringify(block.breakDurations), block.color, index],
+          JSON.stringify(block.breakDurations), block.color, index, managementId],
       );
     }
     if (input.frequency && input.startDate) {
       await txn.runAsync(
         `INSERT INTO day_preset_schedules
-         (id, preset_id, start_date, frequency, weekdays_json, active, created_at)
-         VALUES (?, ?, ?, ?, ?, 1, ?)`,
+         (id, preset_id, start_date, frequency, weekdays_json, active, created_at, management_id)
+         VALUES (?, ?, ?, ?, ?, 1, ?, ?)`,
         [createId("day-preset-schedule"), presetId, input.startDate, input.frequency,
-          JSON.stringify(input.weekdays), now],
+          JSON.stringify(input.weekdays), now, managementId],
       );
     }
   });
 }
 
 export async function updateDayPreset(db: SQLiteDatabase, presetId: string, input: UpdateDayPresetInput): Promise<void> {
+  const managementId = await activeManagementId(db);
   assertPresetBlocksValid(input.blocks);
   if (input.frequency && input.startDate) await assertRecurringPresetValid(db, input, presetId);
   const preset = (await listDayPresets(db)).find((item) => item.id === presetId);
@@ -410,28 +447,28 @@ export async function updateDayPreset(db: SQLiteDatabase, presetId: string, inpu
   const now = new Date().toISOString();
 
   await db.withExclusiveTransactionAsync(async (txn) => {
-    await txn.runAsync("UPDATE day_presets SET name = ? WHERE id = ?", input.name.trim(), presetId);
+    await txn.runAsync("UPDATE day_presets SET name = ? WHERE id = ? AND management_id = ?", input.name.trim(), presetId, managementId);
     for (const [index, block] of input.blocks.entries()) {
       const existing = preset.blocks[index];
       if (existing) {
         await txn.runAsync(
           `UPDATE day_preset_blocks
            SET title = ?, start_time = ?, end_time = ?, break_durations_json = ?, color = ?, sort_order = ?
-           WHERE id = ?`,
-          [block.title, block.startTime, block.endTime, JSON.stringify(block.breakDurations), block.color, index, existing.id],
+            WHERE id = ? AND management_id = ?`,
+          [block.title, block.startTime, block.endTime, JSON.stringify(block.breakDurations), block.color, index, existing.id, managementId],
         );
       } else {
         await txn.runAsync(
           `INSERT INTO day_preset_blocks
-           (id, preset_id, title, start_time, end_time, break_durations_json, color, sort_order)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+           (id, preset_id, title, start_time, end_time, break_durations_json, color, sort_order, management_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [createId("day-preset-block"), presetId, block.title, block.startTime, block.endTime,
-            JSON.stringify(block.breakDurations), block.color, index],
+            JSON.stringify(block.breakDurations), block.color, index, managementId],
         );
       }
     }
     for (const removed of preset.blocks.slice(input.blocks.length)) {
-      await txn.runAsync("DELETE FROM day_preset_blocks WHERE id = ?", removed.id);
+      await txn.runAsync("DELETE FROM day_preset_blocks WHERE id = ? AND management_id = ?", removed.id, managementId);
     }
 
     if (input.frequency && input.startDate) {
@@ -439,25 +476,26 @@ export async function updateDayPreset(db: SQLiteDatabase, presetId: string, inpu
         await txn.runAsync(
           `UPDATE day_preset_schedules
            SET start_date = ?, frequency = ?, weekdays_json = ?, active = 1
-           WHERE id = ?`,
-          input.startDate, input.frequency, JSON.stringify(input.weekdays), preset.schedule.id,
+            WHERE id = ? AND management_id = ?`,
+          input.startDate, input.frequency, JSON.stringify(input.weekdays), preset.schedule.id, managementId,
         );
       } else {
         await txn.runAsync(
           `INSERT INTO day_preset_schedules
-           (id, preset_id, start_date, frequency, weekdays_json, active, created_at)
-           VALUES (?, ?, ?, ?, ?, 1, ?)`,
-          [createId("day-preset-schedule"), presetId, input.startDate, input.frequency, JSON.stringify(input.weekdays), now],
+           (id, preset_id, start_date, frequency, weekdays_json, active, created_at, management_id)
+           VALUES (?, ?, ?, ?, ?, 1, ?, ?)`,
+          [createId("day-preset-schedule"), presetId, input.startDate, input.frequency, JSON.stringify(input.weekdays), now, managementId],
         );
       }
     } else if (preset.schedule) {
-      await txn.runAsync("DELETE FROM time_boxes WHERE preset_schedule_id = ? AND completed = 0", preset.schedule.id);
-      await txn.runAsync("UPDATE day_preset_schedules SET active = 0 WHERE id = ?", preset.schedule.id);
+      await txn.runAsync("DELETE FROM time_boxes WHERE preset_schedule_id = ? AND management_id = ? AND completed = 0", preset.schedule.id, managementId);
+      await txn.runAsync("UPDATE day_preset_schedules SET active = 0 WHERE id = ? AND management_id = ?", preset.schedule.id, managementId);
     }
   });
 }
 
 export async function listDayPresets(db: SQLiteDatabase): Promise<DayPreset[]> {
+  const managementId = await activeManagementId(db);
   const rows = await db.getAllAsync<{
     preset_id: string;
     name: string;
@@ -475,9 +513,11 @@ export async function listDayPresets(db: SQLiteDatabase): Promise<DayPreset[]> {
     `SELECT p.id AS preset_id, p.name, b.id AS block_id, b.title, b.start_time, b.end_time, b.break_durations_json, b.color,
             s.id AS schedule_id, s.start_date, s.frequency, s.weekdays_json
      FROM day_presets p
-     JOIN day_preset_blocks b ON b.preset_id = p.id
-     LEFT JOIN day_preset_schedules s ON s.preset_id = p.id AND s.active = 1
+     JOIN day_preset_blocks b ON b.preset_id = p.id AND b.management_id = p.management_id
+     LEFT JOIN day_preset_schedules s ON s.preset_id = p.id AND s.management_id = p.management_id AND s.active = 1
+     WHERE p.management_id = ?
      ORDER BY p.created_at DESC, b.sort_order`,
+    managementId,
   );
   const presets = new Map<string, DayPreset>();
   for (const row of rows) {
@@ -517,41 +557,49 @@ export async function listDayPresets(db: SQLiteDatabase): Promise<DayPreset[]> {
 }
 
 export async function deleteDayPreset(db: SQLiteDatabase, presetId: string): Promise<void> {
+  const managementId = await activeManagementId(db);
   const schedules = await db.getAllAsync<{ id: string }>(
-    "SELECT id FROM day_preset_schedules WHERE preset_id = ?",
+    "SELECT id FROM day_preset_schedules WHERE preset_id = ? AND management_id = ?",
     presetId,
+    managementId,
   );
   await db.withExclusiveTransactionAsync(async (txn) => {
     for (const schedule of schedules) {
       await txn.runAsync(
-        "DELETE FROM time_boxes WHERE preset_schedule_id = ? AND completed = 0",
+        "DELETE FROM time_boxes WHERE preset_schedule_id = ? AND management_id = ? AND completed = 0",
         schedule.id,
+        managementId,
       );
     }
-    await txn.runAsync("DELETE FROM day_presets WHERE id = ?", presetId);
+    await txn.runAsync("DELETE FROM day_presets WHERE id = ? AND management_id = ?", presetId, managementId);
   });
 }
 
 export async function stopDayPresetRecurrence(db: SQLiteDatabase, presetId: string): Promise<void> {
+  const managementId = await activeManagementId(db);
   const schedules = await db.getAllAsync<{ id: string }>(
-    "SELECT id FROM day_preset_schedules WHERE preset_id = ? AND active = 1",
+    "SELECT id FROM day_preset_schedules WHERE preset_id = ? AND management_id = ? AND active = 1",
     presetId,
+    managementId,
   );
   await db.withExclusiveTransactionAsync(async (txn) => {
     for (const schedule of schedules) {
       await txn.runAsync(
-        "DELETE FROM time_boxes WHERE preset_schedule_id = ? AND completed = 0",
+        "DELETE FROM time_boxes WHERE preset_schedule_id = ? AND management_id = ? AND completed = 0",
         schedule.id,
+        managementId,
       );
     }
     await txn.runAsync(
-      "UPDATE day_preset_schedules SET active = 0 WHERE preset_id = ? AND active = 1",
+      "UPDATE day_preset_schedules SET active = 0 WHERE preset_id = ? AND management_id = ? AND active = 1",
       presetId,
+      managementId,
     );
   });
 }
 
 export async function applyDayPreset(db: SQLiteDatabase, presetId: string, date: string): Promise<ApplyDayPresetResult> {
+  const managementId = await activeManagementId(db);
   const preset = (await listDayPresets(db)).find((item) => item.id === presetId);
   if (!preset) return "not-found";
   const stored = await listTimeBoxes(db);
@@ -570,10 +618,10 @@ export async function applyDayPreset(db: SQLiteDatabase, presetId: string, date:
   await db.withExclusiveTransactionAsync(async (txn) => {
     for (const candidate of candidates) {
       await txn.runAsync(
-        `INSERT INTO time_boxes (id, date, title, start_time, end_time, break_durations_json, color, completed, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)`,
+        `INSERT INTO time_boxes (id, date, title, start_time, end_time, break_durations_json, color, completed, created_at, management_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
         [candidate.id, candidate.date, candidate.title, candidate.startTime, candidate.endTime,
-          JSON.stringify(candidate.breakDurations), candidate.color, candidate.createdAt],
+          JSON.stringify(candidate.breakDurations), candidate.color, candidate.createdAt, managementId],
       );
     }
   });
@@ -582,12 +630,13 @@ export async function applyDayPreset(db: SQLiteDatabase, presetId: string, date:
 
 async function persistVirtualSnapshot(db: SQLiteDatabase, box: TimeBox) {
   if (!box.virtual) return;
+  const managementId = await activeManagementId(db);
   await db.runAsync(
     `INSERT OR IGNORE INTO time_boxes
-     (id, date, title, start_time, end_time, break_durations_json, color, completed, habit_id, created_at, dismissed, preset_schedule_id, preset_block_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+     (id, date, title, start_time, end_time, break_durations_json, color, completed, habit_id, created_at, dismissed, preset_schedule_id, preset_block_id, management_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`,
     [box.id, box.date, box.title, box.startTime, box.endTime, JSON.stringify(box.breakDurations), box.color,
-      box.completed ? 1 : 0, box.habitId, new Date().toISOString(), box.presetScheduleId ?? null, box.presetBlockId ?? null],
+      box.completed ? 1 : 0, box.habitId, new Date().toISOString(), box.presetScheduleId ?? null, box.presetBlockId ?? null, managementId],
   );
 }
 

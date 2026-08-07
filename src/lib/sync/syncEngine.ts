@@ -65,6 +65,7 @@ import {
   type RecurringEntryRow,
   type RecurringEntryUpsertFields,
 } from "./reconcile";
+import { reconcileLifeFlow } from "./lifeflowSync";
 
 export type SyncSummary = {
   pushed: number;
@@ -817,6 +818,22 @@ export async function syncNow(db: SQLiteDatabase, options: SyncOptions = {}): Pr
     const localManagements = (await listLocalManagementsWithRemoteId(db)).filter((management) =>
       scope.remoteManagementIds.has(management.remote_id),
     );
+    const activeManagement = await db.getFirstAsync<{ value: string }>(
+      "SELECT value FROM app_preferences WHERE key = 'active_management_id'",
+    );
+    const lifeFlowManagement = localManagements.find((management) => management.id === activeManagement?.value)
+      ?? localManagements[0];
+    for (const mgmt of lifeFlowManagement ? [lifeFlowManagement] : []) {
+      throwIfCancelled(signal);
+      try {
+        const lifeFlow = await reconcileLifeFlow(db, mgmt.id, mgmt.remote_id, signal);
+        summary.pushed += lifeFlow.pushed;
+        summary.pulled += lifeFlow.pulled;
+      } catch (error) {
+        console.warn("[sync] lifeflow failed", mgmt.remote_id, error);
+        summary.errors += 1;
+      }
+    }
     for (const mgmt of localManagements) {
       throwIfCancelled(signal);
       await pullCategories(db, mgmt, summary, signal);

@@ -1,12 +1,13 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Platform, Pressable } from "react-native";
 import { AppText as RNText } from "@/components/AppText";
-import { router, Stack, type Href } from "expo-router";
+import { router, Stack, useLocalSearchParams, type Href } from "expo-router";
 import { AppSymbol } from "@/components/AppSymbol";
 import { GlassBox } from "@/components/GlassBox";
 import { useTranslation } from "react-i18next";
 
 import { CashflowHomeContent } from "@/components/cashflow/CashflowHomeContent";
+import { MainHome } from "@/components/home/MainHome";
 import { useDrawer } from "@/components/provider/DrawerContext";
 import { useAppTheme } from "@/components/provider/AppTheme";
 import { toolbarIcons } from "@/config/toolbarIcons";
@@ -20,12 +21,22 @@ export default function HomeScreen() {
   const appTheme = useAppTheme();
   const { activity, entries, stats, activeManagement, isSwitchingManagement } = useCashflowData();
   const latestDate = activity.days.at(-1)?.date ?? toDateKey(new Date());
+  const { openEntry } = useLocalSearchParams<{ openEntry?: string }>();
   const [selectedDate, setSelectedDate] = useState(latestDate);
   const effectiveSelectedDate = activity.days.some((day) => day.date === selectedDate) ? selectedDate : latestDate;
+
+  useEffect(() => {
+    if (!openEntry) return;
+    router.setParams({ openEntry: undefined });
+    requestAnimationFrame(() => router.push(`/forms/entry-form?date=${effectiveSelectedDate}` as Href));
+  }, [openEntry, effectiveSelectedDate]);
 
   return (
     <>
       <Stack.Screen options={{ title: t('tabs.home') }} />
+      <Stack.Title asChild>
+        <MainHome section="cashflow" />
+      </Stack.Title>
 
       <Stack.Toolbar placement="left">
         <Stack.Toolbar.Button
@@ -41,17 +52,17 @@ export default function HomeScreen() {
               isInteractive
               tintColor={alpha(appTheme.colors.primary, appTheme.isDark ? 1 : 0.72)}
               glassEffectStyle="clear"
-              style={{ borderRadius: 9999 }}
+              style={{ width: 84, borderRadius: 9999 }}
             >
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={t('entry.catat')}
-                className="flex-row items-center gap-1.5 px-5 py-3"
+                accessibilityLabel={t("entry.catat")}
+                className="h-10 w-full flex-row items-center justify-center gap-1"
                 onPress={() => router.push(`/forms/entry-form?date=${effectiveSelectedDate}` as Href)}
               >
-                <AppSymbol name="plus" size={16} tintColor={appTheme.colors.background} fallback={<RNText className="text-base" style={{ color: appTheme.colors.background }}>+</RNText>} />
-                <RNText className="font-bold text-base" style={{ color: appTheme.colors.background }}>
-                  {t('entry.catat')}
+                <AppSymbol name="plus" size={15} tintColor={appTheme.colors.background} />
+                <RNText className="text-sm font-bold" style={{ color: appTheme.colors.background }}>
+                  {t("entry.catat")}
                 </RNText>
               </Pressable>
             </GlassBox>
@@ -59,12 +70,12 @@ export default function HomeScreen() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={t("entry.catat")}
-              className="h-10 w-28 flex-row items-center justify-center gap-1.5 rounded-full px-3"
+              className="h-10 flex-row items-center justify-center gap-1 rounded-full px-3"
               onPress={() => router.push(`/forms/entry-form?date=${effectiveSelectedDate}` as Href)}
-              style={{ backgroundColor: appTheme.colors.primary }}
+              style={{ width: 84, backgroundColor: appTheme.colors.primary }}
             >
-              <AppSymbol name="plus" size={16} tintColor={appTheme.colors.inverseForeground} />
-              <RNText className="font-bold" style={{ color: appTheme.colors.inverseForeground }}>
+              <AppSymbol name="plus" size={15} tintColor={appTheme.colors.inverseForeground} />
+              <RNText className="text-sm font-bold" style={{ color: appTheme.colors.inverseForeground }}>
                 {t("entry.catat")}
               </RNText>
             </Pressable>

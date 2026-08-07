@@ -38,6 +38,31 @@ function getDateDaysAgo(daysAgo: number) {
   return date;
 }
 
+const DATE_PRESETS = [
+  { key: "yesterday", daysAgo: 1 },
+  { key: "today", daysAgo: 0 },
+  { key: "date", daysAgo: null },
+] as const;
+
+type DatePresetKey = (typeof DATE_PRESETS)[number]["key"];
+
+function getDatePresetIndex(key: DatePresetKey) {
+  return DATE_PRESETS.findIndex((preset) => preset.key === key);
+}
+
+function resolveDateSelection(dateKey: string) {
+  const presetIndex = DATE_PRESETS.findIndex(
+    (preset) => preset.daysAgo !== null && dateKey === toDateKey(getDateDaysAgo(preset.daysAgo)),
+  );
+
+  if (presetIndex >= 0) return { dateIndex: presetIndex, customDate: null };
+
+  return {
+    dateIndex: getDatePresetIndex("date"),
+    customDate: parseDateKey(dateKey),
+  };
+}
+
 function formatCompactDate(date: Date) {
   const lng = i18n.language === "id" ? "id-ID" : "en-US";
   const weekday = date.toLocaleDateString(lng, { weekday: "short" });
@@ -144,13 +169,12 @@ export default function EntryForm() {
       : ["Coffee", "Lunch", "Parking", "Grab", "Electric token"];
     return labels.map((label) => ({ id: label, label, amount: null as number | null, categoryId: null as string | null }));
   }, [i18n.language]);
-  const DATE_OPTIONS = useMemo(() => [
-    { key: "yesterday", label: t("entry.dateOptions.yesterday"), daysAgo: 1 as const },
-    { key: "today", label: t("entry.dateOptions.today"), daysAgo: 0 as const },
-    { key: "date", label: t("entry.dateOptions.date") },
-  ], [t]);
+  const DATE_OPTIONS = useMemo(() => DATE_PRESETS.map((preset) => ({
+    ...preset,
+    label: t(`entry.dateOptions.${preset.key}`),
+  })), [t]);
   const [ioIndex, setIoIndex] = useState(1);
-  const [dateIndex, setDateIndex] = useState(1);
+  const [dateIndex, setDateIndex] = useState(() => getDatePresetIndex("today"));
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [customDate, setCustomDate] = useState<Date | null>(null);
   const [amountText, setAmountText] = useState("");
@@ -163,6 +187,7 @@ export default function EntryForm() {
   } | null>(null);
   const [suggestedFromHistory, setSuggestedFromHistory] = useState(false);
   const automaticOverrideBlockedRef = useRef(isEditing || Boolean(sharedDraft && draftCategory));
+  const initializedEditingEntryRef = useRef<string | null>(null);
   const appliedShareDraftRef = useRef<string | null>(null);
   const appliedShareCategoryRef = useRef<string | null>(null);
   const { width: screenWidth } = useWindowDimensions();
@@ -230,11 +255,16 @@ export default function EntryForm() {
   }, []);
 
   useEffect(() => {
-    if (!editingEntry || categoryOptions.length === 0) return;
+    if (
+      !editingEntry ||
+      categoryOptions.length === 0 ||
+      initializedEditingEntryRef.current === editingEntry.id
+    ) return;
     let cancelled = false;
 
     queueMicrotask(() => {
       if (cancelled) return;
+      initializedEditingEntryRef.current = editingEntry.id;
       const displayNominal = editingEntry.originalCurrency === currency.currency && editingEntry.originalNominal !== null
         ? editingEntry.originalNominal
         : currency.toDisplay(editingEntry.nominal);
@@ -245,16 +275,9 @@ export default function EntryForm() {
       setInitialAmountText(nextAmountText);
       setNoteText(editingEntry.name);
 
-      if (editingEntry.date === toDateKey(getDateDaysAgo(0))) {
-        setDateIndex(0);
-        setCustomDate(null);
-      } else if (editingEntry.date === toDateKey(getDateDaysAgo(1))) {
-        setDateIndex(1);
-        setCustomDate(null);
-      } else {
-        setDateIndex(2);
-        setCustomDate(parseDateKey(editingEntry.date));
-      }
+      const dateSelection = resolveDateSelection(editingEntry.date);
+      setDateIndex(dateSelection.dateIndex);
+      setCustomDate(dateSelection.customDate);
 
       if (editingEntry.category) {
         const normalizedCategory = editingEntry.category.trim().toLowerCase();
@@ -274,24 +297,12 @@ export default function EntryForm() {
     if (isEditing || !date) return;
     let cancelled = false;
 
-    const today = toDateKey(getDateDaysAgo(0));
-    const yesterday = toDateKey(getDateDaysAgo(1));
-
     queueMicrotask(() => {
       if (cancelled) return;
-      if (date === today) {
-        setDateIndex(1);
-        setCustomDate(null);
-      } else if (date === yesterday) {
-        setDateIndex(0);
-        setCustomDate(null);
-      } else {
-        const parsed = parseDateKey(date);
-        if (parsed && !isNaN(parsed.getTime())) {
-          setDateIndex(2);
-          setCustomDate(parsed);
-        }
-      }
+      const dateSelection = resolveDateSelection(date);
+      if (dateSelection.customDate && Number.isNaN(dateSelection.customDate.getTime())) return;
+      setDateIndex(dateSelection.dateIndex);
+      setCustomDate(dateSelection.customDate);
     });
 
     return () => {
@@ -344,16 +355,9 @@ export default function EntryForm() {
       setInitialAmountText(nextAmountText);
       setNoteText(editingEntry.name);
 
-      if (editingEntry.date === toDateKey(getDateDaysAgo(0))) {
-        setDateIndex(0);
-        setCustomDate(null);
-      } else if (editingEntry.date === toDateKey(getDateDaysAgo(1))) {
-        setDateIndex(1);
-        setCustomDate(null);
-      } else {
-        setDateIndex(2);
-        setCustomDate(parseDateKey(editingEntry.date));
-      }
+      const dateSelection = resolveDateSelection(editingEntry.date);
+      setDateIndex(dateSelection.dateIndex);
+      setCustomDate(dateSelection.customDate);
 
       if (editingEntry.category) {
         const idx = categoryOptions.findIndex((c) => c.name === editingEntry.category);
@@ -364,7 +368,7 @@ export default function EntryForm() {
       return;
     }
 
-    setDateIndex(0);
+    setDateIndex(getDatePresetIndex("today"));
     setCustomDate(null);
     setAmountText("");
     setInitialAmountText("");
@@ -389,7 +393,7 @@ export default function EntryForm() {
     const entryType = ioIndex === 0 ? t("entry.income") : t("entry.expense");
     const entryCategory = selectedCategory ?? categoryOptions[categoryIndex] ?? null;
     const selectedDateOption = DATE_OPTIONS[dateIndex];
-    const entryDate = selectedDateOption?.daysAgo !== undefined
+    const entryDate = selectedDateOption?.daysAgo != null
       ? toDateKey(getDateDaysAgo(selectedDateOption.daysAgo))
       : toDateKey(customDate ?? new Date());
 
@@ -608,7 +612,7 @@ export default function EntryForm() {
             <DateChoice
               key={option.key}
               label={option.label}
-              subtitle={option.daysAgo !== undefined ? (
+              subtitle={option.daysAgo !== null ? (
                 <Text className="text-xs" style={{ color: appTheme.colors.muted }}>
                   {formatCompactDate(getDateDaysAgo(option.daysAgo))}
                 </Text>
@@ -623,7 +627,7 @@ export default function EntryForm() {
                   playCategorySliderFeedback("selection");
                 }
                 setDateIndex(index);
-                if (option.daysAgo === undefined) {
+                if (option.daysAgo === null) {
                   setShowDatePicker(true);
                 }
               }}
@@ -650,7 +654,7 @@ export default function EntryForm() {
                 accentColor={appTheme.colors.primary}
                 onValueChange={(_event, date) => {
                   setCustomDate(date);
-                  setDateIndex(2);
+                  setDateIndex(getDatePresetIndex("date"));
                   setShowDatePicker(false);
                 }}
                 onDismiss={() => setShowDatePicker(false)}

@@ -149,6 +149,8 @@ function RootNavigator() {
                       headerShadowVisible: false,
                     }}
                   >
+                    <Stack.Screen name="(cashflow)" options={{ headerShown: false, animation: "fade" }} />
+                    <Stack.Screen name="(lifeflow)" options={{ headerShown: false, animation: "fade" }} />
                     <Stack.Screen name="(onboarding)" options={{ headerShown: false }} />
                     <Stack.Screen name="inbound-share" options={{ headerShown: false }} />
                     <Stack.Screen

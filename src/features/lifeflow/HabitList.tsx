@@ -27,24 +27,33 @@ export function HabitProgressSummary({ habits, completedHabitIds }: { habits: Ha
   const { t } = useTranslation();
   const appTheme = useAppTheme();
   const completedCount = habits.filter((habit) => completedHabitIds.has(habit.id)).length;
+  const progress = habits.length === 0 ? 0 : Math.round((completedCount / habits.length) * 100);
+  const detailBackground = alpha(appTheme.colors.foreground, appTheme.isDark ? 0.08 : 0.045);
 
   return (
-    <View className="gap-4 rounded-3xl px-4 py-4" style={{ backgroundColor: alpha(appTheme.colors.foreground, appTheme.isDark ? 0.06 : 0.035) }}>
-      <View className="flex-row items-end justify-between">
-        <View>
-          <Text className="text-xs font-bold uppercase tracking-wider" style={{ color: appTheme.colors.muted }}>
+    <View className="mb-1">
+      <View className="mb-4 flex-row items-center justify-between">
+        <View className="rounded-full px-2.5 py-1.5" style={{ backgroundColor: detailBackground }}>
+          <Text className="text-xs font-semibold uppercase tracking-[2px]" style={{ color: appTheme.colors.muted }}>
             {t("atomicHabits.dailyProgress")}
           </Text>
-          <View className="mt-1 flex-row items-baseline gap-1">
-            <Text className="text-4xl font-black" style={{ color: appTheme.colors.foreground }}>{completedCount}</Text>
-            <Text className="text-base font-semibold" style={{ color: appTheme.colors.muted }}>/ {habits.length}</Text>
-          </View>
         </View>
-        <Text className="text-2xl font-black" style={{ color: appTheme.colors.primary }}>
-          {habits.length === 0 ? "0%" : `${Math.round((completedCount / habits.length) * 100)}%`}
-        </Text>
+        <View className="flex-row items-center gap-1.5">
+          <AppSymbol name="checkmark" size={14} tintColor={appTheme.colors.primary} />
+          <Text className="text-xs font-semibold" style={{ color: appTheme.colors.primary }}>
+            {completedCount} / {habits.length}
+          </Text>
+        </View>
       </View>
-      <View className="flex-row gap-1.5">
+
+      <Text className="mb-0.5 uppercase" style={{ color: appTheme.colors.muted, fontSize: 11, fontWeight: "600", letterSpacing: 1 }}>
+        {t("atomicHabits.completed")}
+      </Text>
+      <Text className="text-4xl font-black tracking-tight" style={{ color: appTheme.colors.foreground }}>
+        {progress}%
+      </Text>
+
+      <View className="mt-4 flex-row gap-1.5">
         {habits.length === 0 ? (
           <View className="h-2 flex-1 rounded-full" style={{ backgroundColor: alpha(appTheme.colors.foreground, 0.09) }} />
         ) : habits.map((habit) => (

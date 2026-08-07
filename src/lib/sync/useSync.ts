@@ -7,7 +7,7 @@ import { syncNow } from "./syncEngine";
 import { DbOperationInvalidatedError, getDbLockGeneration, withDbLock } from "./dbLock";
 import { reconcileSyncBackgroundTaskAsync } from "@/tasks/syncBackground";
 
-export type SyncStatus = "idle" | "syncing" | "error";
+export type SyncStatus = "idle" | "syncing" | "warning" | "error";
 
 export type SyncHook = {
   status: SyncStatus;
@@ -49,7 +49,8 @@ export function useSync(): SyncHook {
       const completedAt = new Date();
       if (summary.errors > 0) {
         console.warn(`[sync] completed with ${summary.errors} error(s)`);
-        setStatus("error");
+        setLastSync(completedAt);
+        setStatus("warning");
       } else {
         setLastSync(completedAt);
         setStatus("idle");

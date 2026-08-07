@@ -10,8 +10,8 @@ function buildCashflowSection(t: TFunction): SidebarSection {
     area: "cashflow",
     items: [
       {
-        id: "cashflow-home",
-        label: t("sidebar.cashflowHome"),
+        id: "home",
+        label: t("tabs.home"),
         icon: "house.fill",
         route: "/(cashflow)/(tabs)/home" as Href,
         activePaths: ["/home"],
@@ -29,13 +29,13 @@ function buildCashflowSection(t: TFunction): SidebarSection {
             icon: "chart.pie.fill",
             route: "/forms/categories" as Href,
           },
+          {
+            id: "cashflow-automatic-entry",
+            label: t("sidebar.catatOtomatis"),
+            icon: "repeat.circle.fill",
+            route: "/forms/automatic-entry" as Href,
+          },
         ],
-      },
-      {
-        id: "cashflow-automatic-entry",
-        label: t("sidebar.catatOtomatis"),
-        icon: "repeat.circle.fill",
-        route: "/forms/automatic-entry" as Href,
       },
       {
         id: "cashflow-audit",
@@ -52,14 +52,6 @@ function buildLifeFlowSection(notes: CachedNote[], t: TFunction): SidebarSection
     label: t("sidebar.lifeFlow"),
     area: "lifeflow",
     items: [
-      {
-        id: "lifeflow-home",
-        label: t("sidebar.lifeFlowHome"),
-        icon: "house.fill",
-        route: "/(lifeflow)/(tabs)/home" as Href,
-        activePaths: ["/home"],
-        replace: true,
-      },
       {
         id: "lifeflow-journal",
         label: t("sidebar.journal"),

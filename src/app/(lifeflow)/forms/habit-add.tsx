@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { Pressable, ScrollView, TextInput, View } from "react-native";
+import { Pressable, ScrollView, View } from "react-native";
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import { useTranslation } from "react-i18next";
 
 import { AppSymbol } from "@/components/AppSymbol";
 import { AppText as Text } from "@/components/AppText";
+import { AppTextInput } from "@/components/AppTextInput";
 import { useAppTheme } from "@/components/provider/AppTheme";
 import { TIME_BOX_COLORS } from "@/components/lifeflow/TimeMapDial";
 import { toolbarIcons } from "@/config/toolbarIcons";
@@ -66,22 +67,16 @@ export default function HabitAddForm() {
           <Text className="text-xs font-semibold uppercase tracking-wide" style={{ color: appTheme.colors.muted }}>
             {t("atomicHabits.habitName")}
           </Text>
-          <View className="flex-row items-center gap-3 rounded-2xl px-4 py-3" style={{ backgroundColor: alpha(appTheme.colors.foreground, 0.05) }}>
-            <View className="h-3 w-3 rounded-full" style={{ backgroundColor: editingHabit?.isAppCheckIn ? appTheme.colors.primary : color }} />
-            <TextInput
-              autoFocus
-              editable={!editingSystemHabit}
-              value={name}
-              onChangeText={setName}
-              onBlur={() => setNameBlurred(true)}
-              onSubmitEditing={() => void handleSave()}
-              placeholder={t("atomicHabits.namePlaceholder")}
-              placeholderTextColor={appTheme.colors.muted}
-              returnKeyType="done"
-              className="min-w-0 flex-1 py-1 text-base"
-              style={{ color: appTheme.colors.foreground }}
-            />
-          </View>
+          <AppTextInput
+            autoFocus
+            editable={!editingSystemHabit}
+            value={name}
+            onChangeText={setName}
+            onBlur={() => setNameBlurred(true)}
+            onSubmitEditing={() => void handleSave()}
+            placeholder={t("atomicHabits.namePlaceholder")}
+            returnKeyType="done"
+          />
           {nameBlurred && name.trim().length === 0 ? (
             <Text className="text-xs leading-4" style={{ color: appTheme.colors.negative }}>
               {t("atomicHabits.nameRequired")}

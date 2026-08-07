@@ -2,6 +2,7 @@ import * as Notifications from "expo-notifications";
 import type { SQLiteDatabase } from "expo-sqlite";
 import { Platform } from "react-native";
 
+import { HOME_SECTION_ROUTES } from "@/config/homeSections";
 import i18n from "@/i18n";
 import { getWeekStartEnd, toDateKey } from "@/lib/date";
 import {
@@ -183,7 +184,7 @@ async function reconcileNoEntryReminderAsync(db: SQLiteDatabase, settings: Local
         title: i18n.t("reminder.noEntryNotificationTitle"),
         body: i18n.t("reminder.noEntryNotificationBody"),
         sound: "default",
-        data: { kind: NO_ENTRY_KIND, url: "/home" },
+        data: { kind: NO_ENTRY_KIND, url: HOME_SECTION_ROUTES.cashflow },
       },
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.DATE,

@@ -68,6 +68,30 @@ function getCellColor(count: number, primary: string, mutedFill: string) {
   }
 }
 
+function SelectedTodayStripes({ compact = false }: { compact?: boolean }) {
+  const appTheme = useAppTheme();
+  const positions = compact ? [-5, 1, 7, 13] : [-8, 2, 12, 22, 32, 42];
+
+  return (
+    <View pointerEvents="none" className="absolute inset-0 overflow-hidden rounded-[2px]">
+      {positions.map((left) => (
+        <View
+          key={left}
+          style={{
+            position: "absolute",
+            top: compact ? -5 : -12,
+            left,
+            width: compact ? 2 : 4,
+            height: compact ? 22 : 56,
+            backgroundColor: alpha(appTheme.colors.foreground, appTheme.isDark ? 0.2 : 0.14),
+            transform: [{ rotate: "35deg" }],
+          }}
+        />
+      ))}
+    </View>
+  );
+}
+
 function formatDayTitle(day: ActivityDay, locale: string, t: (key: string, options?: Record<string, unknown>) => string) {
   const formattedDate = formatLocalizedDate(parseDateKey(day.date), locale, {
     day: "numeric",
@@ -179,9 +203,9 @@ function ActivityGrid({ activity, selectedDate, onDateSelect }: ActivityHeatmapP
   const appTheme = useAppTheme();
   const { t, i18n } = useTranslation();
   const scrollRef = useRef<ScrollView>(null);
+  const todayKey = getLocalTodayKey();
   const selectedIndex = activity.days.findIndex((day) => day.date === selectedDate);
   const mutedFill = appTheme.isDark ? "rgba(255,255,255,0.09)" : "rgba(15,23,42,0.08)";
-  const borderColor = appTheme.isDark ? "rgba(255,255,255,0.16)" : "rgba(15,23,42,0.12)";
   const weeks = chunkWeeks(activity.days);
   const dayLabels = useMemo(() => getDayLabels(localeFromLanguage(i18n.language)), [i18n.language]);
 
@@ -210,6 +234,7 @@ function ActivityGrid({ activity, selectedDate, onDateSelect }: ActivityHeatmapP
         {weeks.map((week, weekIndex) => (
           <View key={week[0]?.date ?? weekIndex} className="gap-1">
             {week.map((day) => {
+              const isToday = day.date === todayKey;
               const isSelected = day.date === selectedDate;
 
               return (
@@ -223,8 +248,11 @@ function ActivityGrid({ activity, selectedDate, onDateSelect }: ActivityHeatmapP
                     backgroundColor: getCellColor(day.count, appTheme.colors.primary, mutedFill),
                     borderColor: isSelected ? appTheme.colors.primary : "transparent",
                     borderWidth: isSelected ? 2 : 0,
+                    overflow: "hidden",
                   }}
-                />
+                >
+                  {isToday && isSelected ? <SelectedTodayStripes compact /> : null}
+                </Pressable>
               );
             })}
           </View>
@@ -286,11 +314,13 @@ function ActivityCalendar({ activity, selectedDate, onDateSelect }: ActivityHeat
                 backgroundColor: getCellColor(day.count, appTheme.colors.primary, mutedFill),
                 borderColor: isSelected ? appTheme.colors.primary : isToday ? alpha(appTheme.colors.foreground, 0.6) : borderColor,
                 borderWidth: isSelected || isToday ? 2 : 1,
+                overflow: "hidden",
               }}
             >
+              {isToday && isSelected ? <SelectedTodayStripes /> : null}
               <RNText
                 className="text-xs font-semibold"
-                style={{ color: day.count > 0 && level >= 3 ? appTheme.colors.inverseForeground : appTheme.colors.muted }}
+                style={{ color: day.count > 0 && level >= 3 ? appTheme.colors.inverseForeground : appTheme.colors.muted, zIndex: 1 }}
               >
                 {getDayNumber(day.date)}
               </RNText>

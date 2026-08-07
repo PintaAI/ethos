@@ -1,4 +1,5 @@
 import type { SQLiteDatabase } from "expo-sqlite";
+import { notifyActiveManagementChanged } from "@/lib/activeManagementEvents";
 import { Platform } from "react-native";
 import type { ActivityOverview } from "@/components/cashflow/ActivityHeatmap";
 import type { CashflowEntry } from "@/components/cashflow/CashflowTable";
@@ -228,6 +229,7 @@ export async function setActiveManagementId(db: SQLiteDatabase, managementId: st
      ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
     managementId,
   );
+  notifyActiveManagementChanged();
 }
 
 export async function listManagements(db: SQLiteDatabase) {

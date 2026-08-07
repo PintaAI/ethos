@@ -1,15 +1,17 @@
 import { useEffect, useState } from "react";
-import { Alert, Pressable, ScrollView, TextInput, View } from "react-native";
+import { Alert, Pressable, ScrollView, View } from "react-native";
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import { useTranslation } from "react-i18next";
 
 import { AppSymbol } from "@/components/AppSymbol";
 import { AppText as Text } from "@/components/AppText";
+import { AppTextInput } from "@/components/AppTextInput";
 import { useAppTheme } from "@/components/provider/AppTheme";
 import { NativeTimeWheel, TimeInput } from "@/components/lifeflow/TimeInput";
 import { getTimeBoxColor, TIME_BOX_COLORS } from "@/components/lifeflow/TimeMapDial";
 import { toolbarIcons } from "@/config/toolbarIcons";
 import { useLifeFlow } from "@/data/lifeflow/LifeFlowProvider";
+import { repeatForSchedule, weekdaysForRepeat, type ScheduleRepeat } from "@/data/lifeflow/recurrence";
 import { alpha } from "@/lib/color";
 import { toDateKey, formatTimeRange12h } from "@/lib/date";
 import { getPreference, removePreference, setPreference, type TimeBoxCustomPreset, type TimeBoxPresetRange } from "@/lib/preferences";
@@ -23,6 +25,7 @@ const DEFAULT_PRESETS = {
   sleep: { startTime: "22:00", endTime: "06:00" },
   work: { startTime: "09:00", endTime: "17:00" },
 } satisfies Record<"sleep" | "work", TimeBoxPresetRange>;
+const WEEKDAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"] as const;
 
 export default function ScheduleBlockForm() {
   const { t } = useTranslation();
@@ -37,10 +40,14 @@ export default function ScheduleBlockForm() {
     startTime?: string;
     endTime?: string;
   }>();
-  const { habits, getTimeBoxesForDate, createTimeBox, updateTimeBox } = useLifeFlow();
+  const { habits, dayPresets, getTimeBoxesForDate, createTimeBox, createDayPreset, updateDayPreset, updateTimeBox } = useLifeFlow();
   const date = paramDate ?? toDateKey(new Date());
   const timeBoxes = getTimeBoxesForDate(date);
   const editingBox = boxId ? timeBoxes.find((box) => box.id === boxId) : undefined;
+  const recurringPreset = editingBox?.presetScheduleId && editingBox.presetBlockId
+    ? dayPresets.find((preset) => preset.schedule?.id === editingBox.presetScheduleId && preset.blocks.some((block) => block.id === editingBox.presetBlockId))
+    : undefined;
+  const initialRepeat = repeatForSchedule(recurringPreset?.schedule ?? null);
   const linkedHabitId = editingBox?.habitId ?? paramHabitId;
   const linkedHabit = linkedHabitId ? habits.find((habit) => habit.id === linkedHabitId) : undefined;
   const usedColors = new Set(
@@ -67,6 +74,9 @@ export default function ScheduleBlockForm() {
   const [presets, setPresets] = useState(DEFAULT_PRESETS);
   const [customPreset, setCustomPreset] = useState<TimeBoxCustomPreset | null>(null);
   const [saving, setSaving] = useState(false);
+  const [applyScope, setApplyScope] = useState<"occurrence" | "series">("occurrence");
+  const [repeat, setRepeat] = useState<ScheduleRepeat>(initialRepeat);
+  const [weekdays, setWeekdays] = useState<number[]>(recurringPreset?.schedule?.weekdays ?? [new Date(`${date}T00:00:00.000Z`).getUTCDay()]);
 
   useEffect(() => {
     let cancelled = false;
@@ -182,20 +192,45 @@ export default function ScheduleBlockForm() {
       Alert.alert(t("timeBoxing.breaksDoNotFitTitle"), t("timeBoxing.breaksDoNotFitMessage"));
       return;
     }
+    if (repeat === "weekly" && weekdays.length === 0) {
+      Alert.alert(t("timeBoxing.repeatWeekdayRequiredTitle"), t("timeBoxing.repeatWeekdayRequiredMessage"));
+      return;
+    }
     const candidate = { date, startTime, endTime };
-    const overlaps = timeBoxes.some((box) => box.id !== editingBox?.id && timeBoxesOverlap(candidate, box));
+    const editingSeries = Boolean(editingBox && recurringPreset && applyScope === "series");
+    const repeatAppliesOnFormDate = repeat === "none"
+      ? !editingSeries
+      : repeat === "daily" || weekdays.includes(new Date(`${date}T00:00:00.000Z`).getUTCDay());
+    const validateFormDate = (!editingBox || editingSeries) ? repeatAppliesOnFormDate : true;
+    const overlaps = validateFormDate && timeBoxes.some((box) => box.id !== editingBox?.id && timeBoxesOverlap(candidate, box));
     if (overlaps) {
       Alert.alert(t("timeBoxing.overlapTitle"), t("timeBoxing.overlapMessage"));
       return;
     }
-    if (!linkedHabit && usedColors.has(selectedColor.toUpperCase())) {
+    if (validateFormDate && !linkedHabit && usedColors.has(selectedColor.toUpperCase())) {
       Alert.alert(t("timeBoxing.colorUnavailableTitle"), t("timeBoxing.colorUnavailableMessage"));
       return;
     }
     setSaving(true);
     try {
-      if (editingBox) {
+      if (editingBox && recurringPreset && applyScope === "series") {
+        await updateDayPreset(recurringPreset.id, {
+          name: recurringPreset.name,
+          startDate: repeat === "none" ? undefined : recurringPreset.schedule?.startDate ?? date,
+          frequency: repeat === "none" ? undefined : repeat,
+          weekdays: weekdaysForRepeat(repeat, weekdays),
+          blocks: recurringPreset.blocks.map((block) => block.id === editingBox.presetBlockId
+            ? { title, startTime, endTime, breakDurations, color: selectedColor }
+            : block),
+        });
+      } else if (editingBox) {
         await updateTimeBox(editingBox, { title, startTime, endTime, breakDurations, color: selectedColor });
+      } else if (repeat !== "none") {
+        await createDayPreset({
+          name: title.trim(), startDate: date, frequency: repeat,
+          weekdays: weekdaysForRepeat(repeat, weekdays),
+          blocks: [{ title, startTime, endTime, breakDurations, color: selectedColor }],
+        });
       } else {
         await createTimeBox({ date, title, startTime, endTime, breakDurations, color: selectedColor, habitId: linkedHabit?.id });
       }
@@ -310,16 +345,56 @@ export default function ScheduleBlockForm() {
             </Pressable>
           </ScrollView>
         </View> : null}
+        {!linkedHabit ? (
+          <View className="gap-3 rounded-3xl p-4" style={{ backgroundColor: alpha(appTheme.colors.foreground, appTheme.isDark ? 0.06 : 0.035) }}>
+            {recurringPreset ? (
+              <View className="gap-2">
+                <Text className="text-xs font-semibold uppercase tracking-wide" style={{ color: appTheme.colors.muted }}>{t("timeBoxing.applyChangesTo")}</Text>
+                <View accessibilityRole="radiogroup" className="flex-row gap-2">
+                  {(["occurrence", "series"] as const).map((scope) => (
+                    <Pressable key={scope} accessibilityRole="radio" accessibilityState={{ checked: applyScope === scope }} accessibilityLabel={t(`timeBoxing.applyScope.${scope}`)} onPress={() => setApplyScope(scope)} className="flex-1 items-center rounded-xl px-3 py-2.5" style={{ backgroundColor: alpha(applyScope === scope ? appTheme.colors.primary : appTheme.colors.foreground, applyScope === scope ? 0.16 : 0.06) }}>
+                      <Text className="text-sm font-bold" style={{ color: applyScope === scope ? appTheme.colors.primary : appTheme.colors.foreground }}>{t(`timeBoxing.applyScope.${scope}`)}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+            ) : null}
+            {!recurringPreset || applyScope === "series" ? (
+              <>
+                <Text className="text-xs font-semibold uppercase tracking-wide" style={{ color: appTheme.colors.muted }}>{t("timeBoxing.repeat")}</Text>
+                <View accessibilityRole="radiogroup" className="flex-row gap-2">
+                  {(["none", "daily", "weekly"] as const).map((mode) => (
+                    <Pressable key={mode} accessibilityRole="radio" accessibilityState={{ checked: repeat === mode }} accessibilityLabel={t(`timeBoxing.repeatMode.${mode}`)} onPress={() => setRepeat(mode)} className="flex-1 items-center rounded-xl px-2 py-2.5" style={{ backgroundColor: alpha(repeat === mode ? appTheme.colors.primary : appTheme.colors.foreground, repeat === mode ? 0.16 : 0.06) }}>
+                      <Text className="text-sm font-bold" style={{ color: repeat === mode ? appTheme.colors.primary : appTheme.colors.foreground }}>{t(`timeBoxing.repeatMode.${mode}`)}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+                {repeat === "weekly" ? (
+                  <View className="gap-2">
+                    <Text className="text-xs" style={{ color: appTheme.colors.muted }}>{t("timeBoxing.repeatOn")}</Text>
+                    <View className="flex-row justify-between">
+                      {WEEKDAYS.map((weekday, index) => {
+                        const selected = weekdays.includes(index);
+                        return <Pressable key={weekday} accessibilityRole="checkbox" accessibilityState={{ checked: selected }} accessibilityLabel={t(`timeBoxing.weekdays.${weekday}`)} onPress={() => setWeekdays((current) => current.includes(index) ? current.filter((day) => day !== index) : [...current, index].sort())} className="h-10 w-10 items-center justify-center rounded-full" style={{ backgroundColor: alpha(selected ? appTheme.colors.primary : appTheme.colors.foreground, selected ? 0.18 : 0.06) }}><Text className="text-xs font-bold" style={{ color: selected ? appTheme.colors.primary : appTheme.colors.foreground }}>{t(`timeBoxing.weekdays.${weekday}`)}</Text></Pressable>;
+                      })}
+                    </View>
+                  </View>
+                ) : null}
+                {repeat !== "none" ? <Text className="text-xs leading-4" style={{ color: appTheme.colors.muted }}>{t(repeat === "weekly" ? "timeBoxing.repeatStartWeeklyHelper" : "timeBoxing.repeatStartHelper", { date })}</Text> : null}
+              </>
+            ) : null}
+          </View>
+        ) : (
+          <View className="rounded-2xl px-4 py-3" style={{ backgroundColor: alpha(appTheme.colors.foreground, 0.045) }}><Text className="text-xs leading-4" style={{ color: appTheme.colors.muted }}>{t("timeBoxing.habitRepeatUnavailable")}</Text></View>
+        )}
         <View className="gap-3 rounded-3xl p-4" style={{ backgroundColor: alpha(appTheme.colors.foreground, appTheme.isDark ? 0.06 : 0.035) }}>
           {!linkedHabit ? <View className="flex-row items-center gap-3">
-            <TextInput
+            <AppTextInput
               value={title}
               onChangeText={setTitle}
               onBlur={() => setTitleBlurred(true)}
               placeholder={t("timeBoxing.titlePlaceholder")}
-              placeholderTextColor={appTheme.colors.muted}
-              className="flex-1 rounded-xl px-3 py-3 text-base"
-              style={{ color: appTheme.colors.foreground, backgroundColor: alpha(appTheme.colors.foreground, 0.05) }}
+              containerStyle={{ flex: 1 }}
             />
             <Pressable
               accessibilityRole="button"
@@ -414,7 +489,7 @@ export default function ScheduleBlockForm() {
                 <Text className="text-xs" style={{ color: appTheme.colors.muted }}>{t("timeBoxing.breaksDescription")}</Text>
               </View>
               <View className="flex-row gap-1.5">
-                {[5, 15, 30].map((duration) => (
+                {[5, 15, 30, 60].map((duration) => (
                   <Pressable
                     key={duration}
                     accessibilityRole="button"

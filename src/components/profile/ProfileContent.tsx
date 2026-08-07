@@ -168,6 +168,8 @@ export function ProfileContent() {
       : t("profile.syncActionNow");
   const syncDetail = sync.status === "error"
     ? t("profile.syncStatusError")
+    : sync.status === "warning"
+      ? t("profile.syncStatusPartial")
     : sync.status === "syncing"
       ? ""
       : t("profile.syncStatusLastSync", { time: formatRelativeTime(sync.lastSync) });

@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { ThemeSet } from "@/components/provider/AppTheme";
+import type { HomeSection } from "@/config/homeSections";
 
 export type StoredTheme = ThemeSet & {
   slug: string;
@@ -23,6 +24,7 @@ export type Preferences = {
   customThemes: StoredTheme[];
   selectedTheme: string;
   hasSkippedOnboarding: boolean;
+  lastHomeSection: HomeSection;
   textSize: number | null;
   textSpacing: number | null;
   activityView: "grid" | "calendar";
@@ -46,6 +48,7 @@ const preferenceDefaults: Preferences = {
   customThemes: [],
   selectedTheme: "green",
   hasSkippedOnboarding: false,
+  lastHomeSection: "cashflow",
   textSize: null,
   textSpacing: null,
   activityView: "calendar",

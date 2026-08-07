@@ -9,6 +9,7 @@ import { AppText } from "@/components/AppText";
 import { useAppTheme } from "@/components/provider/AppTheme";
 import { useAuth } from "@/components/provider/AuthProvider";
 import { useCurrency } from "@/components/provider/CurrencyProvider";
+import { HOME_SECTION_ROUTES } from "@/config/homeSections";
 import { useCashflowData } from "@/data/cashflow/CashflowDataProvider";
 import { alpha } from "@/lib/color";
 import { toDateKey } from "@/lib/date";
@@ -209,7 +210,7 @@ export default function InboundShareScreen() {
           if (cancelled) return;
           clearSharedPayloads();
           // Always land on cashflow home so the form sheet has a screen behind it.
-          router.replace("/home");
+          router.replace(HOME_SECTION_ROUTES.cashflow);
           requestAnimationFrame(() => router.push(entryRoute));
         }, 480);
       })

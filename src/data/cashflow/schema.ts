@@ -1,7 +1,8 @@
 import type { SQLiteDatabase } from "expo-sqlite";
 import { withDbClearBarrier } from "@/lib/sync/dbLock";
+import { adoptLifeFlowScope, ensureLifeFlowScopeColumns } from "./lifeflowMigration22";
 
-const DATABASE_VERSION = 21;
+const DATABASE_VERSION = 23;
 
 async function hasColumn(db: SQLiteDatabase, table: string, column: string) {
   const columns = await db.getAllAsync<{ name: string }>(`PRAGMA table_info(${table})`);
@@ -513,10 +514,154 @@ export async function migrateCashflowDatabase(db: SQLiteDatabase) {
   }
 
   if (currentVersion < 21) {
+    for (const table of ["habits", "habit_logs", "time_boxes", "day_presets", "day_preset_blocks", "day_preset_schedules", "app_preferences"]) {
+      if (!await hasColumn(db, table, "updated_at")) {
+        await db.execAsync(`ALTER TABLE ${table} ADD COLUMN updated_at TEXT;`);
+      }
+    }
+    await db.execAsync(`
+      UPDATE habits SET updated_at = COALESCE(updated_at, created_at);
+      UPDATE habit_logs SET updated_at = COALESCE(updated_at, completed_at);
+      UPDATE time_boxes SET updated_at = COALESCE(updated_at, created_at);
+      UPDATE day_presets SET updated_at = COALESCE(updated_at, created_at);
+      UPDATE day_preset_blocks SET updated_at = COALESCE(updated_at, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+      UPDATE day_preset_schedules SET updated_at = COALESCE(updated_at, created_at);
+      UPDATE app_preferences SET updated_at = COALESCE(updated_at, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+
+      CREATE TABLE IF NOT EXISTS lifeflow_tombstones (
+        kind TEXT NOT NULL,
+        entity_id TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (kind, entity_id)
+      );
+
+      CREATE TRIGGER IF NOT EXISTS habits_sync_update AFTER UPDATE ON habits
+      WHEN NEW.updated_at IS OLD.updated_at
+      BEGIN UPDATE habits SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.id; END;
+      CREATE TRIGGER IF NOT EXISTS habit_logs_sync_update AFTER UPDATE ON habit_logs
+      WHEN NEW.updated_at IS OLD.updated_at
+      BEGIN UPDATE habit_logs SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE habit_id = NEW.habit_id AND date = NEW.date; END;
+      CREATE TRIGGER IF NOT EXISTS time_boxes_sync_update AFTER UPDATE ON time_boxes
+      WHEN NEW.updated_at IS OLD.updated_at
+      BEGIN UPDATE time_boxes SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.id; END;
+      CREATE TRIGGER IF NOT EXISTS day_presets_sync_update AFTER UPDATE ON day_presets
+      WHEN NEW.updated_at IS OLD.updated_at
+      BEGIN UPDATE day_presets SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.id; END;
+      CREATE TRIGGER IF NOT EXISTS day_preset_blocks_sync_update AFTER UPDATE ON day_preset_blocks
+      WHEN NEW.updated_at IS OLD.updated_at
+      BEGIN UPDATE day_preset_blocks SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.id; END;
+      CREATE TRIGGER IF NOT EXISTS day_preset_schedules_sync_update AFTER UPDATE ON day_preset_schedules
+      WHEN NEW.updated_at IS OLD.updated_at
+      BEGIN UPDATE day_preset_schedules SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.id; END;
+
+      CREATE TRIGGER IF NOT EXISTS habits_sync_insert AFTER INSERT ON habits WHEN NEW.updated_at IS NULL
+      BEGIN UPDATE habits SET updated_at = COALESCE(NEW.created_at, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) WHERE id = NEW.id; END;
+      CREATE TRIGGER IF NOT EXISTS habit_logs_sync_insert AFTER INSERT ON habit_logs WHEN NEW.updated_at IS NULL
+      BEGIN UPDATE habit_logs SET updated_at = COALESCE(NEW.completed_at, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) WHERE habit_id = NEW.habit_id AND date = NEW.date; END;
+      CREATE TRIGGER IF NOT EXISTS time_boxes_sync_insert AFTER INSERT ON time_boxes WHEN NEW.updated_at IS NULL
+      BEGIN UPDATE time_boxes SET updated_at = COALESCE(NEW.created_at, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) WHERE id = NEW.id; END;
+      CREATE TRIGGER IF NOT EXISTS day_presets_sync_insert AFTER INSERT ON day_presets WHEN NEW.updated_at IS NULL
+      BEGIN UPDATE day_presets SET updated_at = COALESCE(NEW.created_at, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) WHERE id = NEW.id; END;
+      CREATE TRIGGER IF NOT EXISTS day_preset_blocks_sync_insert AFTER INSERT ON day_preset_blocks WHEN NEW.updated_at IS NULL
+      BEGIN UPDATE day_preset_blocks SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.id; END;
+      CREATE TRIGGER IF NOT EXISTS day_preset_schedules_sync_insert AFTER INSERT ON day_preset_schedules WHEN NEW.updated_at IS NULL
+      BEGIN UPDATE day_preset_schedules SET updated_at = COALESCE(NEW.created_at, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) WHERE id = NEW.id; END;
+      CREATE TRIGGER IF NOT EXISTS app_preferences_sync_update AFTER UPDATE ON app_preferences
+      WHEN NEW.updated_at IS OLD.updated_at
+      BEGIN UPDATE app_preferences SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE key = NEW.key; END;
+      CREATE TRIGGER IF NOT EXISTS app_preferences_sync_insert AFTER INSERT ON app_preferences WHEN NEW.updated_at IS NULL
+      BEGIN UPDATE app_preferences SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE key = NEW.key; END;
+
+      CREATE TRIGGER IF NOT EXISTS habits_sync_delete AFTER DELETE ON habits BEGIN
+        INSERT OR REPLACE INTO lifeflow_tombstones VALUES ('habit', OLD.id, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')); END;
+      CREATE TRIGGER IF NOT EXISTS habit_logs_sync_delete AFTER DELETE ON habit_logs BEGIN
+        INSERT OR REPLACE INTO lifeflow_tombstones VALUES ('habit_log', OLD.habit_id || '|' || OLD.date, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')); END;
+      CREATE TRIGGER IF NOT EXISTS time_boxes_sync_delete AFTER DELETE ON time_boxes BEGIN
+        INSERT OR REPLACE INTO lifeflow_tombstones VALUES ('time_box', OLD.id, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')); END;
+      CREATE TRIGGER IF NOT EXISTS day_presets_sync_delete AFTER DELETE ON day_presets BEGIN
+        INSERT OR REPLACE INTO lifeflow_tombstones VALUES ('day_preset', OLD.id, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')); END;
+      CREATE TRIGGER IF NOT EXISTS day_preset_blocks_sync_delete AFTER DELETE ON day_preset_blocks BEGIN
+        INSERT OR REPLACE INTO lifeflow_tombstones VALUES ('day_preset_block', OLD.id, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')); END;
+      CREATE TRIGGER IF NOT EXISTS day_preset_schedules_sync_delete AFTER DELETE ON day_preset_schedules BEGIN
+        INSERT OR REPLACE INTO lifeflow_tombstones VALUES ('day_preset_schedule', OLD.id, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')); END;
+    `);
+    currentVersion = 21;
+  }
+
+  if (currentVersion < 22) {
+    await ensureLifeFlowScopeColumns(db);
+    const active = await db.getFirstAsync<{ value: string }>(
+      "SELECT value FROM app_preferences WHERE key = 'active_management_id'",
+    );
+    const fallback = await db.getFirstAsync<{ id: string }>(
+      "SELECT id FROM managements WHERE deleted_at IS NULL ORDER BY created_at, id LIMIT 1",
+    );
+    const managementId = active?.value ?? fallback?.id;
+    if (managementId) {
+      await adoptLifeFlowScope(db, managementId);
+    }
+    await db.execAsync(`
+      DROP TRIGGER IF EXISTS habits_sync_delete;
+      DROP TRIGGER IF EXISTS habit_logs_sync_delete;
+      DROP TRIGGER IF EXISTS time_boxes_sync_delete;
+      DROP TRIGGER IF EXISTS day_presets_sync_delete;
+      DROP TRIGGER IF EXISTS day_preset_blocks_sync_delete;
+      DROP TRIGGER IF EXISTS day_preset_schedules_sync_delete;
+
+      ALTER TABLE lifeflow_tombstones RENAME TO lifeflow_tombstones_v21;
+      CREATE TABLE lifeflow_tombstones (
+        management_id TEXT NOT NULL REFERENCES managements(id) ON DELETE CASCADE,
+        kind TEXT NOT NULL,
+        entity_id TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (management_id, kind, entity_id)
+      );
+      INSERT INTO lifeflow_tombstones (management_id, kind, entity_id, updated_at)
+      SELECT COALESCE((SELECT value FROM app_preferences WHERE key = 'active_management_id'),
+                      (SELECT id FROM managements WHERE deleted_at IS NULL ORDER BY created_at, id LIMIT 1)),
+             kind, entity_id, updated_at
+      FROM lifeflow_tombstones_v21
+      WHERE EXISTS (SELECT 1 FROM managements WHERE deleted_at IS NULL);
+      DROP TABLE lifeflow_tombstones_v21;
+
+      CREATE INDEX IF NOT EXISTS habits_management_idx ON habits(management_id, created_at);
+      CREATE UNIQUE INDEX IF NOT EXISTS habits_management_system_idx ON habits(management_id, system_type) WHERE system_type IS NOT NULL;
+      CREATE INDEX IF NOT EXISTS habit_logs_management_date_idx ON habit_logs(management_id, date);
+      CREATE INDEX IF NOT EXISTS time_boxes_management_date_idx ON time_boxes(management_id, date, start_time);
+      CREATE INDEX IF NOT EXISTS day_presets_management_idx ON day_presets(management_id, created_at);
+      CREATE INDEX IF NOT EXISTS day_preset_blocks_management_idx ON day_preset_blocks(management_id, preset_id);
+      CREATE INDEX IF NOT EXISTS day_preset_schedules_management_idx ON day_preset_schedules(management_id, preset_id, active);
+
+      CREATE TRIGGER habits_management_required BEFORE INSERT ON habits WHEN NEW.management_id IS NULL BEGIN SELECT RAISE(ABORT, 'habits.management_id is required'); END;
+      CREATE TRIGGER habit_logs_management_required BEFORE INSERT ON habit_logs WHEN NEW.management_id IS NULL BEGIN SELECT RAISE(ABORT, 'habit_logs.management_id is required'); END;
+      CREATE TRIGGER time_boxes_management_required BEFORE INSERT ON time_boxes WHEN NEW.management_id IS NULL BEGIN SELECT RAISE(ABORT, 'time_boxes.management_id is required'); END;
+      CREATE TRIGGER day_presets_management_required BEFORE INSERT ON day_presets WHEN NEW.management_id IS NULL BEGIN SELECT RAISE(ABORT, 'day_presets.management_id is required'); END;
+      CREATE TRIGGER day_preset_blocks_management_required BEFORE INSERT ON day_preset_blocks WHEN NEW.management_id IS NULL BEGIN SELECT RAISE(ABORT, 'day_preset_blocks.management_id is required'); END;
+      CREATE TRIGGER day_preset_schedules_management_required BEFORE INSERT ON day_preset_schedules WHEN NEW.management_id IS NULL BEGIN SELECT RAISE(ABORT, 'day_preset_schedules.management_id is required'); END;
+
+      CREATE TRIGGER habits_sync_delete AFTER DELETE ON habits WHEN OLD.management_id IS NOT NULL BEGIN
+        INSERT OR REPLACE INTO lifeflow_tombstones VALUES (OLD.management_id, 'habit', OLD.id, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')); END;
+      CREATE TRIGGER habit_logs_sync_delete AFTER DELETE ON habit_logs WHEN OLD.management_id IS NOT NULL BEGIN
+        INSERT OR REPLACE INTO lifeflow_tombstones VALUES (OLD.management_id, 'habit_log', OLD.habit_id || '|' || OLD.date, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')); END;
+      CREATE TRIGGER time_boxes_sync_delete AFTER DELETE ON time_boxes WHEN OLD.management_id IS NOT NULL BEGIN
+        INSERT OR REPLACE INTO lifeflow_tombstones VALUES (OLD.management_id, 'time_box', OLD.id, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')); END;
+      CREATE TRIGGER day_presets_sync_delete AFTER DELETE ON day_presets WHEN OLD.management_id IS NOT NULL BEGIN
+        INSERT OR REPLACE INTO lifeflow_tombstones VALUES (OLD.management_id, 'day_preset', OLD.id, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')); END;
+      CREATE TRIGGER day_preset_blocks_sync_delete AFTER DELETE ON day_preset_blocks WHEN OLD.management_id IS NOT NULL BEGIN
+        INSERT OR REPLACE INTO lifeflow_tombstones VALUES (OLD.management_id, 'day_preset_block', OLD.id, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')); END;
+      CREATE TRIGGER day_preset_schedules_sync_delete AFTER DELETE ON day_preset_schedules WHEN OLD.management_id IS NOT NULL BEGIN
+        INSERT OR REPLACE INTO lifeflow_tombstones VALUES (OLD.management_id, 'day_preset_schedule', OLD.id, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')); END;
+
+      DELETE FROM app_preferences WHERE key IN ('atomic_habits_app_check_in_id', 'habits_daily_journal_id');
+    `);
+    currentVersion = 22;
+  }
+
+  if (currentVersion < 23) {
     if (!(await hasColumn(db, "managements", "category"))) {
       await db.execAsync("ALTER TABLE managements ADD COLUMN category TEXT;");
     }
-    currentVersion = 21;
+    currentVersion = 23;
   }
 
   await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
@@ -532,16 +677,17 @@ export async function clearCashflowDatabase(db: SQLiteDatabase) {
       DELETE FROM categories;
       DELETE FROM audit_snapshots;
       DELETE FROM management_members;
-      DELETE FROM managements;
-      DELETE FROM users;
       DELETE FROM note_drafts;
       DELETE FROM note_cache;
       DELETE FROM habit_logs;
-      DELETE FROM habits;
       DELETE FROM time_boxes;
       DELETE FROM day_preset_schedules;
       DELETE FROM day_preset_blocks;
       DELETE FROM day_presets;
+      DELETE FROM habits;
+      DELETE FROM lifeflow_tombstones;
+      DELETE FROM managements;
+      DELETE FROM users;
       DELETE FROM app_preferences;
     `);
   }));

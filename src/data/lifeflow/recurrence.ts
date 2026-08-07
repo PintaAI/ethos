@@ -1,6 +1,16 @@
 import { canAllocateTimeBox, timeBoxRangesAreValid, timeBoxesOverlap } from "../../lib/timeBox.ts";
 import type { DayPreset, TimeBox } from "./types.ts";
 
+export type ScheduleRepeat = "none" | "daily" | "weekly";
+
+export function repeatForSchedule(schedule: DayPreset["schedule"]): ScheduleRepeat {
+  return schedule?.frequency === "daily" ? "daily" : schedule?.frequency === "weekly" ? "weekly" : "none";
+}
+
+export function weekdaysForRepeat(repeat: ScheduleRepeat, weekdays: number[]) {
+  return repeat === "daily" ? [0, 1, 2, 3, 4, 5, 6] : repeat === "weekly" ? [...weekdays].sort() : [];
+}
+
 export function recurringTimeBoxId(scheduleId: string, blockId: string, date: string) {
   return `time-box-${scheduleId}-${blockId}-${date}`;
 }

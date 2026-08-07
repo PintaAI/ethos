@@ -11,6 +11,7 @@ import type { Habit, HabitLog, TimeBox } from "@/data/lifeflow/types";
 import { alpha } from "@/lib/color";
 import { addDaysToDateKey, formatTimeRange12h, parseDateKey, toDateKey } from "@/lib/date";
 import { isHabitScheduledOnDate } from "@/lib/habit";
+import { getLifeFlowDailyProgress, type LifeFlowDailyProgress } from "@/lib/lifeFlowProgress";
 
 type OverviewRowProps = {
   icon: "book.pages.fill" | "checkmark.circle.fill" | "calendar";
@@ -26,6 +27,7 @@ type LifeFlowHomeContentProps = {
   habits: Habit[];
   habitLogs: HabitLog[];
   timeBoxes: TimeBox[];
+  dailyProgress?: LifeFlowDailyProgress;
   referenceDate?: Date;
   onOpenJournal: () => void;
   onOpenHabits: () => void;
@@ -64,6 +66,7 @@ export function LifeFlowHomeContent({
   habits,
   habitLogs,
   timeBoxes,
+  dailyProgress: suppliedDailyProgress,
   referenceDate,
   onOpenJournal,
   onOpenHabits,
@@ -80,23 +83,21 @@ export function LifeFlowHomeContent({
   const locale = i18n.language === "id" ? "id-ID" : "en-US";
   const monday = addDaysToDateKey(today, -((now.getDay() + 6) % 7));
   const weekDates = Array.from({ length: 7 }, (_, index) => addDaysToDateKey(monday, index));
-  const completedByDate = new Map<string, Set<string>>();
-
-  for (const log of habitLogs) {
-    const completed = completedByDate.get(log.date) ?? new Set<string>();
-    completed.add(log.habitId);
-    completedByDate.set(log.date, completed);
-  }
-
-  const journalHabit = habits.find((habit) => habit.isJournalHabit);
-  const journalDone = Boolean(journalHabit && completedByDate.get(today)?.has(journalHabit.id));
-  const todayHabits = habits.filter((habit) => isHabitScheduledOnDate(habit, today));
-  const todayNonJournalHabits = todayHabits.filter((habit) => !habit.isJournalHabit);
-  const todayCompletedIds = completedByDate.get(today) ?? new Set<string>();
-  const completedHabits = todayHabits.filter((habit) => todayCompletedIds.has(habit.id)).length;
-  const completedNonJournalHabits = todayNonJournalHabits.filter((habit) => todayCompletedIds.has(habit.id)).length;
-  const todayBoxes = timeBoxes.filter((box) => box.date === today);
-  const completedBoxes = todayBoxes.filter((box) => box.completed).length;
+  const dailyProgress = suppliedDailyProgress ?? getLifeFlowDailyProgress(habits, habitLogs, timeBoxes, today);
+  const {
+    completedByDate,
+    journalHabit,
+    journalDone,
+    todayHabits,
+    todayNonJournalHabits,
+    todayCompletedIds,
+    completedHabits,
+    todayBoxes,
+    completedBoxes,
+    totalToday,
+    completedToday,
+    percentage: dailyPercentage,
+  } = dailyProgress;
   const currentTime = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
   const nextBox = [...todayBoxes]
     .filter((box) => !box.completed && box.startTime >= currentTime)
@@ -182,9 +183,6 @@ export function LifeFlowHomeContent({
     const rightUpdatedAt = right.draft?.updatedAt ?? right.updatedAt;
     return rightUpdatedAt.localeCompare(leftUpdatedAt);
   })[0];
-  const totalToday = todayNonJournalHabits.length + todayBoxes.length + 1;
-  const completedToday = completedNonJournalHabits + completedBoxes + Number(journalDone);
-  const dailyPercentage = totalToday === 0 ? 0 : Math.round((completedToday / totalToday) * 100);
   const journalDetail = journalDone
     ? latestNote
       ? t("lifeFlowHome.latestEntry", { title: latestNote.title || t("tabs.notes") })
@@ -209,17 +207,12 @@ export function LifeFlowHomeContent({
         <Text className="text-xs font-bold uppercase tracking-widest" style={{ color: appTheme.colors.muted }}>
           {now.toLocaleDateString(locale, { weekday: "long", day: "numeric", month: "long" })}
         </Text>
-        <View className="flex-row items-end justify-between gap-4">
-          <View className="flex-1">
-            <Text className="text-2xl font-black tracking-tight" style={{ color: appTheme.colors.foreground }}>
-              {t("lifeFlowHome.dailyRhythm")}
-            </Text>
-            <Text className="mt-1 text-sm" style={{ color: appTheme.colors.muted }}>
-              {t("lifeFlowHome.complete", { completed: completedToday, total: totalToday })}
-            </Text>
-          </View>
-          <Text className="text-5xl font-black tracking-tighter" style={{ color: appTheme.colors.primary }}>
-            {dailyPercentage}%
+        <View>
+          <Text className="text-2xl font-black tracking-tight" style={{ color: appTheme.colors.foreground }}>
+            {t("lifeFlowHome.dailyRhythm")}
+          </Text>
+          <Text className="mt-1 text-sm" style={{ color: appTheme.colors.muted }}>
+            {t("lifeFlowHome.complete", { completed: completedToday, total: totalToday })}
           </Text>
         </View>
         <View className="h-2 overflow-hidden rounded-full" style={{ backgroundColor: alpha(appTheme.colors.foreground, 0.08) }}>

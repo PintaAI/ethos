@@ -26,7 +26,7 @@ export default function ScheduleScreen() {
   const { t, i18n } = useTranslation();
   const { open } = useDrawer();
   const appTheme = useAppTheme();
-  const { today, habits, habitLogs, dayPresets, getTimeBoxesForDate, clearTimeBoxesForDate, deleteTimeBox, planHabit, setTimeBoxCompleted, updateTimeBoxRange } = useLifeFlow();
+  const { today, habits, habitLogs, dayPresets, getTimeBoxesForDate, clearTimeBoxesForDate, deleteTimeBox, stopDayPresetRecurrence, planHabit, setTimeBoxCompleted, updateTimeBoxRange } = useLifeFlow();
   const [date, setDate] = useState(today);
   const previousToday = useRef(today);
   const [dialInteracting, setDialInteracting] = useState(false);
@@ -97,6 +97,19 @@ export default function ScheduleScreen() {
     );
   };
 
+  const handleDelete = (box: TimeBox) => {
+    if (!box.presetScheduleId) {
+      void deleteTimeBox(box);
+      return;
+    }
+    const preset = dayPresets.find((item) => item.schedule?.id === box.presetScheduleId);
+    Alert.alert(t("timeBoxing.deleteRecurringTitle"), t("timeBoxing.deleteRecurringMessage"), [
+      { text: t("common.cancel"), style: "cancel" },
+      { text: t("timeBoxing.thisOccurrence"), onPress: () => void deleteTimeBox(box) },
+      ...(preset ? [{ text: t("timeBoxing.entireSeries"), style: "destructive" as const, onPress: () => void stopDayPresetRecurrence(preset.id) }] : []),
+    ]);
+  };
+
   return (
     <>
       <Stack.Screen options={{ title: t("timeBoxing.title") }} />
@@ -160,7 +173,7 @@ export default function ScheduleScreen() {
 
         <ScheduleTimeline
           boxes={dayBoxes}
-          onDelete={(id) => { const box = dayBoxes.find((item) => item.id === id); if (box) void deleteTimeBox(box); }}
+          onDelete={(id) => { const box = dayBoxes.find((item) => item.id === id); if (box) handleDelete(box); }}
           onSetCompleted={(id, completed) => { const box = dayBoxes.find((item) => item.id === id); if (box) void setTimeBoxCompleted(box, completed); }}
         />
 
