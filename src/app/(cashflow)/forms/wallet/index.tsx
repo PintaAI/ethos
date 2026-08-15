@@ -128,7 +128,7 @@ export default function WalletFormSheet() {
         </Stack.Toolbar>
       ) : null}
 
-      <ScrollView className="bg-[--app-color-background] flex-1" contentContainerClassName="gap-5 px-5 pb-10 pt-5" contentInsetAdjustmentBehavior="automatic" nestedScrollEnabled={Platform.OS === "android"}>
+      <ScrollView className="bg-[--app-color-background] flex-1" contentContainerClassName="gap-5 px-5 pb-20 pt-5" contentInsetAdjustmentBehavior="automatic" nestedScrollEnabled={Platform.OS === "android"}>
         <View className="gap-2">
           <Text className="text-xs font-semibold uppercase tracking-[2px]" style={{ color: appTheme.colors.muted }}>
             {t("wallet.dataScope")}

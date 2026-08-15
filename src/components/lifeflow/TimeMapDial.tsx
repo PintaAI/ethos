@@ -5,21 +5,22 @@ import { useTranslation } from "react-i18next";
 
 import { AppText as Text } from "@/components/AppText";
 import { useAppTheme } from "@/components/provider/AppTheme";
-import type { TimeBox } from "@/data/lifeflow/types";
+import type { ItemOccurrence } from "@/data/lifeflow/types";
 import { alpha } from "@/lib/color";
 import { toDateKey } from "@/lib/date";
 import { getTimeBoxDuration, getTimeBoxFocusDuration, getTimeBoxFocusRanges, timeToMinutes } from "@/lib/timeBox";
 
 type TimeMapDialProps = {
-  boxes: TimeBox[];
+  boxes: TimedItemOccurrence[];
   date: string;
   durationLabel: string;
   mapLabel: string;
-  onUpdateBox?: (box: TimeBox, startTime: string, endTime: string) => Promise<boolean>;
-  onEditBox?: (box: TimeBox) => void;
+  onUpdateBox?: (box: TimedItemOccurrence, startTime: string, endTime: string) => Promise<boolean>;
+  onEditBox?: (box: TimedItemOccurrence) => void;
   onAddBox?: (startTime: string, endTime: string) => void;
   onInteractionChange?: (active: boolean) => void;
 };
+export type TimedItemOccurrence = ItemOccurrence & { startTime: string; endTime: string };
 
 const MINUTES_IN_DAY = 24 * 60;
 const SNAP_MINUTES = 15;
@@ -179,7 +180,7 @@ export function TimeMapDial({ boxes, date, durationLabel, mapLabel, onUpdateBox,
   const dragOriginRange = useRef<{ startTime: string; endTime: string } | null>(null);
   const dragOriginTouch = useRef<number | null>(null);
   const didMove = useRef(false);
-  const editOnRelease = useRef<TimeBox | null>(null);
+  const editOnRelease = useRef<TimedItemOccurrence | null>(null);
   const touchWasHandled = useRef(false);
   const touchStartPoint = useRef<{ x: number; y: number } | null>(null);
   const selectedBox = boxes.find((box) => box.id === selectedId) ?? null;
@@ -396,7 +397,7 @@ export function TimeMapDial({ boxes, date, durationLabel, mapLabel, onUpdateBox,
             const arcLength = circumference * (duration / MINUTES_IN_DAY);
             const color = box.color ?? getTimeBoxColor(box.id);
             const focusRanges = getTimeBoxFocusRanges(range.startTime, range.endTime, box.breakDurations);
-            const labelFits = arcLength >= Array.from(box.title).length * 6.5 + 24;
+            const labelFits = arcLength >= Array.from(box.name).length * 6.5 + 24;
             const labelPathId = `time-box-label-${box.id.replace(/[^a-zA-Z0-9_-]/g, "")}-${start}-${duration}`;
             return (
               <G key={box.id}>
@@ -441,7 +442,7 @@ export function TimeMapDial({ boxes, date, durationLabel, mapLabel, onUpdateBox,
                       letterSpacing={0.2}
                       textAnchor="middle"
                     >
-                      <TextPath href={`#${labelPathId}`} startOffset="50%">{box.title}</TextPath>
+                      <TextPath href={`#${labelPathId}`} startOffset="50%">{box.name}</TextPath>
                     </SvgText>
                   </>
                 ) : null}
@@ -580,7 +581,7 @@ export function TimeMapDial({ boxes, date, durationLabel, mapLabel, onUpdateBox,
               : durationLabel}
           </Text>
           <Text numberOfLines={1} className="max-w-36 text-xs font-semibold uppercase tracking-[1.5px]" style={{ color: appTheme.colors.muted }}>
-            {selectedBox ? selectedBox.title : mapLabel}
+            {selectedBox ? selectedBox.name : mapLabel}
           </Text>
         </View>
 

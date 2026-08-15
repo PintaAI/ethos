@@ -104,7 +104,7 @@ export default function AuditFormSheet() {
 
       <ScrollView
         className="flex-1 bg-[--app-color-background]"
-        contentContainerClassName="gap-5 px-5 pb-10 pt-5"
+        contentContainerClassName="gap-5 px-5 pb-20 pt-5"
         contentInsetAdjustmentBehavior="automatic"
         keyboardShouldPersistTaps="handled"
         nestedScrollEnabled={Platform.OS === "android"}

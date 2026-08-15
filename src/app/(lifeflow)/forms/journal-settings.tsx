@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Alert, InteractionManager, Pressable, ScrollView, Share, View } from "react-native";
+import { Alert, InteractionManager, Pressable, ScrollView, Share, Switch, View } from "react-native";
 import { router, Stack, useLocalSearchParams, type Href } from "expo-router";
 import { useTranslation } from "react-i18next";
 
@@ -8,6 +8,7 @@ import { AppText as Text } from "@/components/AppText";
 import { useAppTheme } from "@/components/provider/AppTheme";
 import { NoteIcon, NOTE_ICON_OPTIONS } from "@/components/notes/NoteIcon";
 import { useNotesData } from "@/data/notes/NotesDataProvider";
+import { useLifeFlow } from "@/data/lifeflow/LifeFlowProvider";
 import type { CachedNote, ServerNoteInvitation } from "@/data/notes/types";
 import {
   createNoteInvitation,
@@ -22,6 +23,8 @@ export default function JournalSettingsScreen() {
   const appTheme = useAppTheme();
   const { t } = useTranslation();
   const { notes, loadNote, updateIcon, togglePin, deleteNote } = useNotesData();
+  const flow = useLifeFlow();
+  const journalEnabled = flow.items.some((item) => item.systemType === "journal");
   const [note, setNote] = useState<CachedNote | null>(() => notes.find((item) => item.id === id) ?? null);
   const [invitations, setInvitations] = useState<ServerNoteInvitation[]>([]);
   const [busy, setBusy] = useState(false);
@@ -108,9 +111,16 @@ export default function JournalSettingsScreen() {
       <Stack.Screen options={{ title: t("notes.settings") }} />
       <ScrollView
         className="bg-[--app-color-background]"
-        contentContainerClassName="gap-6 px-5 pb-10 pt-4"
+        contentContainerClassName="gap-6 px-5 pb-20 pt-4"
         contentInsetAdjustmentBehavior="automatic"
       >
+        <View className="gap-3">
+          <Text className="text-xs font-semibold uppercase tracking-[2px]" style={{ color: appTheme.colors.muted }}>{t("lifeFlowItems.dailyJournal")}</Text>
+          <View className="flex-row items-center justify-between rounded-2xl px-4 py-3" style={{ backgroundColor: alpha(appTheme.colors.foreground, appTheme.isDark ? 0.08 : 0.045) }}>
+            <View className="min-w-0 flex-1 pr-4"><Text className="font-bold" style={{ color: appTheme.colors.foreground }}>{t("lifeFlowItems.trackJournal")}</Text><Text className="text-xs" style={{ color: appTheme.colors.muted }}>{t("lifeFlowItems.trackJournalDescription")}</Text></View>
+            <Switch accessibilityLabel={t("lifeFlowItems.trackJournal")} value={journalEnabled} onValueChange={(enabled) => void flow.setJournalItemEnabled(enabled)} />
+          </View>
+        </View>
         <View className="gap-3">
           <Text className="text-xs font-semibold uppercase tracking-[2px]" style={{ color: appTheme.colors.muted }}>{t("notes.appearance")}</Text>
           <View className="flex-row flex-wrap gap-3">

@@ -1,13 +1,16 @@
+import { useRef } from "react";
 import { Platform } from "react-native";
 import { useTranslation } from "react-i18next";
 import { NativeTabs } from "expo-router/unstable-native-tabs";
 
 import { useAppTheme } from "@/components/provider/AppTheme";
 import { alpha } from "@/lib/color";
+import { switchHomeSection } from "@/lib/appSwitch";
 
 export default function LifeFlowTabsLayout() {
   const { t } = useTranslation();
   const appTheme = useAppTheme();
+  const focusedTabKeyRef = useRef<string | undefined>(undefined);
   const androidIndicatorColor = alpha(appTheme.colors.primary, appTheme.isDark ? 0.28 : 0.16);
   const androidRippleColor = alpha(appTheme.colors.primary, appTheme.isDark ? 0.36 : 0.24);
 
@@ -19,6 +22,17 @@ export default function LifeFlowTabsLayout() {
       labelStyle={{ color: appTheme.colors.foreground }}
       indicatorColor={Platform.OS === "android" ? androidIndicatorColor : undefined}
       rippleColor={Platform.OS === "android" ? androidRippleColor : undefined}
+      screenListeners={{
+        state: (e) => {
+          const state = e.data.state;
+          focusedTabKeyRef.current = state.routes[state.index]?.key;
+        },
+        tabPress: (e) => {
+          if (e.target === focusedTabKeyRef.current) {
+            switchHomeSection("cashflow");
+          }
+        },
+      }}
     >
       <NativeTabs.Trigger name="home">
         <NativeTabs.Trigger.Label>{t("tabs.home")}</NativeTabs.Trigger.Label>

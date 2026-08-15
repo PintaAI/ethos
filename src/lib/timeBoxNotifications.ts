@@ -2,7 +2,7 @@ import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
 
 import i18n from "@/i18n";
-import type { TimeBox } from "@/data/lifeflow/types";
+import type { ItemOccurrence } from "@/data/lifeflow/types";
 import { parseDateKey } from "@/lib/date";
 import {
   DEFAULT_NOTIFICATION_CHANNEL_ID,
@@ -12,7 +12,7 @@ import {
 } from "@/lib/notifications";
 import { getTimeBoxBreakRanges, timeToMinutes } from "@/lib/timeBox";
 
-const TIME_BOX_NOTIFICATION_KIND = "time-box-reminder";
+const TIME_BOX_NOTIFICATION_KIND = "item-occurrence-reminder";
 const MAX_SCHEDULED_EVENTS = 40;
 let reconcileQueue: Promise<void> = Promise.resolve();
 
@@ -22,18 +22,46 @@ type ReconcileNotificationOptions = {
 };
 
 type TimeBoxNotificationEvent = {
-  box: TimeBox;
+  box: TimedNotificationOccurrence;
   event: "start" | "end" | `break-start-${number}` | `break-resume-${number}`;
   date: Date;
   title: string;
   body: string;
 };
 
-export function reconcileTimeBoxNotificationsAsync(
-  timeBoxes: TimeBox[],
+type TimedNotificationOccurrence = {
+  id: string;
+  date: string;
+  title: string;
+  startTime: string;
+  endTime: string;
+  breakDurations: number[];
+  color: string | null;
+  completed: boolean;
+};
+
+export function reconcileItemOccurrenceNotificationsAsync(
+  occurrences: ItemOccurrence[],
   options: ReconcileNotificationOptions = {},
 ) {
-  const snapshot = timeBoxes.map((box) => ({ ...box }));
+  return enqueueReconciliation(occurrences.filter(
+    (occurrence): occurrence is ItemOccurrence & { startTime: string; endTime: string } => occurrence.startTime !== null && occurrence.endTime !== null,
+  ).map((occurrence) => ({
+    id: occurrence.id,
+    date: occurrence.date,
+    title: occurrence.name,
+    startTime: occurrence.startTime,
+    endTime: occurrence.endTime,
+    breakDurations: [...occurrence.breakDurations],
+    color: occurrence.color,
+    completed: occurrence.kind === "habit" && occurrence.completed,
+  })), options);
+}
+
+function enqueueReconciliation(
+  snapshot: TimedNotificationOccurrence[],
+  options: ReconcileNotificationOptions,
+) {
   const next = reconcileQueue
     .catch(() => undefined)
     .then(() => reconcileTimeBoxNotificationsNowAsync(snapshot, options));
@@ -42,7 +70,7 @@ export function reconcileTimeBoxNotificationsAsync(
 }
 
 async function reconcileTimeBoxNotificationsNowAsync(
-  timeBoxes: TimeBox[],
+  timeBoxes: TimedNotificationOccurrence[],
   options: ReconcileNotificationOptions,
 ) {
   if (Platform.OS !== "ios" && Platform.OS !== "android") return;
@@ -50,7 +78,7 @@ async function reconcileTimeBoxNotificationsNowAsync(
 
   const scheduled = await Notifications.getAllScheduledNotificationsAsync();
   const existing = scheduled.filter(
-    (notification) => notification.content.data?.kind === TIME_BOX_NOTIFICATION_KIND,
+    (notification) => [TIME_BOX_NOTIFICATION_KIND, "time-box-reminder"].includes(String(notification.content.data?.kind)),
   );
   const allowed = options.requestPermission === false
     ? await notificationsAreAllowedAsync()
@@ -76,10 +104,11 @@ async function reconcileTimeBoxNotificationsNowAsync(
   for (const notification of existing) {
     if (options.shouldCancel?.()) return;
     const data = notification.content.data;
-    const key = `${String(data?.timeBoxId)}:${String(data?.event)}:${String(data?.scheduledAt)}`;
+    const key = `${String(data?.occurrenceId)}:${String(data?.event)}:${String(data?.scheduledAt)}`;
     const desiredEvent = desiredByKey.get(key);
     if (
-      desiredEvent
+      data?.kind === TIME_BOX_NOTIFICATION_KIND
+      && desiredEvent
       && notification.content.title === desiredEvent.title
       && notification.content.body === desiredEvent.body
     ) {
@@ -101,7 +130,7 @@ async function reconcileTimeBoxNotificationsNowAsync(
         color: event.box.color ?? undefined,
         data: {
           kind: TIME_BOX_NOTIFICATION_KIND,
-          timeBoxId: event.box.id,
+          occurrenceId: event.box.id,
           event: event.event,
           scheduledAt: event.date.getTime(),
           url: "/schedule",
@@ -116,7 +145,7 @@ async function reconcileTimeBoxNotificationsNowAsync(
   }
 }
 
-function createEvents(box: TimeBox): TimeBoxNotificationEvent[] {
+function createEvents(box: TimedNotificationOccurrence): TimeBoxNotificationEvent[] {
   const startDate = dateAtTime(box.date, box.startTime);
   const endDate = dateAtTime(box.date, box.endTime);
   if (timeToMinutes(box.endTime) < timeToMinutes(box.startTime)) {

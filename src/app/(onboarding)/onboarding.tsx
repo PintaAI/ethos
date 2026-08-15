@@ -31,9 +31,9 @@ import {
 import {
   sampleLifeFlowDate,
   sampleLifeFlowHabitLogs,
-  sampleLifeFlowHabits,
-  sampleLifeFlowNotes,
-  sampleLifeFlowTimeBoxes,
+  sampleLifeFlowItems,
+  sampleLifeFlowOccurrences,
+  sampleLifeFlowProgress,
 } from "@/data/lifeflow/sampleData";
 
 type PreviewTabKey = "system" | "cashflow" | "lifeFlow";
@@ -164,17 +164,18 @@ function CashflowPreviewBody() {
 function LifeFlowPreviewBody() {
   return (
     <LifeFlowHomeContent
-      notes={sampleLifeFlowNotes}
-      habits={sampleLifeFlowHabits}
+      notes={[]}
+      items={sampleLifeFlowItems}
       habitLogs={sampleLifeFlowHabitLogs}
-      timeBoxes={sampleLifeFlowTimeBoxes}
+      occurrences={sampleLifeFlowOccurrences}
+      dailyProgress={sampleLifeFlowProgress}
+      getOccurrencesForDate={(date) => date === sampleLifeFlowOccurrences[0]?.date ? sampleLifeFlowOccurrences : []}
       referenceDate={sampleLifeFlowDate}
       onOpenJournal={() => {}}
       onOpenHabits={() => {}}
       onOpenSchedule={() => {}}
-      onOpenTimeBox={() => {}}
+      onOpenEvent={() => {}}
       onCompleteHabit={() => Promise.resolve()}
-      onCompleteTimeBox={() => Promise.resolve()}
     />
   );
 }

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useSQLiteContext } from "expo-sqlite";
 import { useAuth } from "@/components/provider/AuthProvider";
 import { useCashflowData } from "@/data/cashflow/CashflowDataProvider";
+import { useLifeFlow } from "@/data/lifeflow/LifeFlowProvider";
 import { getPreference, setPreference } from "@/lib/preferences";
 import { syncNow } from "./syncEngine";
 import { DbOperationInvalidatedError, getDbLockGeneration, withDbLock } from "./dbLock";
@@ -21,6 +22,7 @@ export function useSync(): SyncHook {
   const db = useSQLiteContext();
   const { isAuthenticated, isPending } = useAuth();
   const { refresh } = useCashflowData();
+  const { refresh: refreshLifeFlow } = useLifeFlow();
   const [status, setStatus] = useState<SyncStatus>("idle");
   const [lastSync, setLastSync] = useState<Date | null>(null);
   const [cloudSyncEnabled, setCloudSyncEnabledState] = useState<boolean | null>(null);
@@ -45,7 +47,7 @@ export function useSync(): SyncHook {
     const generation = getDbLockGeneration();
     try {
       const summary = await withDbLock(() => syncNow(db), generation);
-      await refresh();
+      await Promise.all([refresh(), refreshLifeFlow()]);
       const completedAt = new Date();
       if (summary.errors > 0) {
         console.warn(`[sync] completed with ${summary.errors} error(s)`);
@@ -65,7 +67,7 @@ export function useSync(): SyncHook {
     } finally {
       runningRef.current = false;
     }
-  }, [cloudSyncEnabled, db, isAuthenticated, isPending, refresh]);
+  }, [cloudSyncEnabled, db, isAuthenticated, isPending, refresh, refreshLifeFlow]);
 
   useEffect(() => {
     if (cloudSyncEnabled === null) return;

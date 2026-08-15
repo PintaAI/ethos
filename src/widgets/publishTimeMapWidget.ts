@@ -1,8 +1,8 @@
-import type { TimeBox } from "@/data/lifeflow/types";
+import type { TimedItemOccurrence } from "@/components/lifeflow/TimeMapDial";
 
 export type PublishTimeMapWidgetInput = {
   date: string;
-  boxes: TimeBox[];
+  boxes: TimedItemOccurrence[];
   durationLabel: string;
   mapLabel: string;
   backgroundColor: string;

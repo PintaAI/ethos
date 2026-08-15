@@ -8,6 +8,7 @@ import { useTranslation } from "react-i18next";
 import { AppText } from "@/components/AppText";
 import { useAppTheme } from "@/components/provider/AppTheme";
 import { AndroidFormFooter, AndroidFormFooterButton } from "@/components/AndroidFormFooter";
+import { useSyncStatus } from "@/components/provider/SyncProvider";
 import { authClient } from "@/lib/auth-client";
 
 type AuthProvider = "google" | "apple";
@@ -15,6 +16,7 @@ type AuthProvider = "google" | "apple";
 export default function Auth() {
   const appTheme = useAppTheme();
   const { t } = useTranslation();
+  const sync = useSyncStatus();
   const [loadingProvider, setLoadingProvider] = useState<AuthProvider | null>(null);
   const [error, setError] = useState<string | null>(null);
   const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
@@ -88,6 +90,8 @@ export default function Auth() {
         return;
       }
 
+      await sync.setCloudSyncEnabled(true);
+
       if (returnTo === "inbound-share") {
         router.back();
       } else if (returnTo === "onboarding-wallet") {
@@ -138,7 +142,7 @@ export default function Auth() {
 
       <ScrollView
         className={Platform.OS === "android" ? "bg-[--app-color-background]" : "flex-1 bg-[--app-color-background]"}
-        contentContainerClassName="gap-5 px-5 pb-10 mt-5 pt-5"
+        contentContainerClassName="gap-5 px-5 pb-20 mt-5 pt-5"
         nestedScrollEnabled={Platform.OS === "android"}
         keyboardShouldPersistTaps="handled"
         style={{ backgroundColor: appTheme.colors.background }}

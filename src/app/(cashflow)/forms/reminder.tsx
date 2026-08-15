@@ -97,7 +97,7 @@ export default function ReminderFormSheet() {
       <ScrollView
         className="bg-[--app-color-background] flex-1"
         contentInsetAdjustmentBehavior="automatic"
-        contentContainerClassName="gap-5 px-5 pb-10 pt-5"
+        contentContainerClassName="gap-5 px-5 pb-20 pt-5"
         nestedScrollEnabled={Platform.OS === "android"}
       >
         <View className="gap-4 rounded-[32px] border p-4" style={{ backgroundColor: surface, borderColor }}>

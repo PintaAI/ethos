@@ -24,12 +24,6 @@ const formSheetOptions = Platform.select({
   },
 });
 
-const dayPresetFormSheetOptions = {
-  ...formSheetOptions,
-  sheetAllowedDetents: [0.6, 1] as [number, number],
-  sheetInitialDetentIndex: 0,
-};
-
 export default function LifeFlowLayout() {
   return (
     <>
@@ -45,7 +39,6 @@ export default function LifeFlowLayout() {
         <Stack.Screen name="forms/journal-settings" options={formSheetOptions} />
         <Stack.Screen name="forms/habit-add" options={formSheetOptions} />
         <Stack.Screen name="forms/schedule-block" options={formSheetOptions} />
-        <Stack.Screen name="forms/day-preset" options={dayPresetFormSheetOptions} />
       </Stack>
     </>
   );

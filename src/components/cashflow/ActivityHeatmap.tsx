@@ -27,6 +27,18 @@ type ActivityHeatmapProps = {
   activity: ActivityOverview;
   selectedDate: string;
   onDateSelect: (date: string) => void;
+  fixedView?: ActivityView;
+  binary?: boolean;
+  countsPosition?: "above" | "below";
+  copy?: {
+    title: string;
+    activeToday: string;
+    inactiveToday: string;
+    recorded: string;
+    activeDays: string;
+    streak: string;
+    dayLabel: (day: ActivityDay) => string;
+  };
 };
 
 type ActivityView = "grid" | "calendar";
@@ -199,7 +211,7 @@ function ActivityViewTabs({ view, onChange, compact = false }: { view: ActivityV
   );
 }
 
-function ActivityGrid({ activity, selectedDate, onDateSelect }: ActivityHeatmapProps) {
+function ActivityGrid({ activity, selectedDate, onDateSelect, binary, copy }: ActivityHeatmapProps) {
   const appTheme = useAppTheme();
   const { t, i18n } = useTranslation();
   const scrollRef = useRef<ScrollView>(null);
@@ -242,10 +254,10 @@ function ActivityGrid({ activity, selectedDate, onDateSelect }: ActivityHeatmapP
                   key={day.date}
                   onPress={() => onDateSelect(day.date)}
                   accessibilityRole="button"
-                  accessibilityLabel={formatDayTitle(day, localeFromLanguage(i18n.language), t)}
+                  accessibilityLabel={copy?.dayLabel(day) ?? formatDayTitle(day, localeFromLanguage(i18n.language), t)}
                   className="h-3 w-3 rounded-[3px]"
                   style={{
-                    backgroundColor: getCellColor(day.count, appTheme.colors.primary, mutedFill),
+                    backgroundColor: binary && day.count > 0 ? appTheme.colors.primary : getCellColor(day.count, appTheme.colors.primary, mutedFill),
                     borderColor: isSelected ? appTheme.colors.primary : "transparent",
                     borderWidth: isSelected ? 2 : 0,
                     overflow: "hidden",
@@ -262,7 +274,7 @@ function ActivityGrid({ activity, selectedDate, onDateSelect }: ActivityHeatmapP
   );
 }
 
-function ActivityCalendar({ activity, selectedDate, onDateSelect }: ActivityHeatmapProps) {
+function ActivityCalendar({ activity, selectedDate, onDateSelect, binary, copy }: ActivityHeatmapProps) {
   const appTheme = useAppTheme();
   const { t, i18n } = useTranslation();
   const scrollRef = useRef<ScrollView>(null);
@@ -308,10 +320,10 @@ function ActivityCalendar({ activity, selectedDate, onDateSelect }: ActivityHeat
             <Pressable
               onPress={() => onDateSelect(day.date)}
               accessibilityRole="button"
-              accessibilityLabel={formatDayTitle(day, locale, t)}
+              accessibilityLabel={copy?.dayLabel(day) ?? formatDayTitle(day, locale, t)}
               className="h-8 w-11 items-center justify-center rounded-[3px]"
               style={{
-                backgroundColor: getCellColor(day.count, appTheme.colors.primary, mutedFill),
+                backgroundColor: binary && day.count > 0 ? appTheme.colors.primary : getCellColor(day.count, appTheme.colors.primary, mutedFill),
                 borderColor: isSelected ? appTheme.colors.primary : isToday ? alpha(appTheme.colors.foreground, 0.6) : borderColor,
                 borderWidth: isSelected || isToday ? 2 : 1,
                 overflow: "hidden",
@@ -356,19 +368,21 @@ function HeatmapLegend() {
   );
 }
 
-export function ActivityHeatmap({ activity, selectedDate, onDateSelect }: ActivityHeatmapProps) {
+export function ActivityHeatmap({ activity, selectedDate, onDateSelect, fixedView, binary, countsPosition = "above", copy }: ActivityHeatmapProps) {
   const { t } = useTranslation();
   const appTheme = useAppTheme();
   const { width } = useWindowDimensions();
   const [view, setView] = useState<ActivityView>("calendar");
+  const activeView = fixedView ?? view;
   const isWide = width >= 640;
   const hasLoggedToday = activity.currentStreak > 0;
 
   useEffect(() => {
+    if (fixedView) return;
     getPreference("activityView").then((saved) => {
       if (saved) setView(saved as ActivityView);
     }).catch((error) => console.warn("Failed to load activity view", error));
-  }, []);
+  }, [fixedView]);
 
   const handleViewChange = useCallback((nextView: ActivityView) => {
     setView(nextView);
@@ -376,45 +390,51 @@ export function ActivityHeatmap({ activity, selectedDate, onDateSelect }: Activi
       .catch((error) => console.warn("Failed to save activity view", error));
   }, []);
 
+  const countsRow = (
+    <View className="flex-row flex-wrap items-center gap-2">
+      <RNText className="text-xs" style={{ color: appTheme.colors.muted }}>{copy?.recorded ?? t('cashflow.activityRecorded', { count: activity.totalEntries })}</RNText>
+      <RNText className="text-xs" style={{ color: appTheme.colors.muted }}>|</RNText>
+      <RNText className="text-xs" style={{ color: appTheme.colors.muted }}>{copy?.activeDays ?? `${activity.activeDays} active days`}</RNText>
+      {!isWide && !fixedView ? (
+        <View className="ml-auto">
+          <ActivityViewTabs view={view} onChange={handleViewChange} compact />
+        </View>
+      ) : null}
+    </View>
+  );
+
+  const heatmap = activeView === "grid" ? (
+    <ActivityGrid activity={activity} selectedDate={selectedDate} onDateSelect={onDateSelect} binary={binary} copy={copy} />
+  ) : (
+    <ActivityCalendar activity={activity} selectedDate={selectedDate} onDateSelect={onDateSelect} binary={binary} copy={copy} />
+  );
+
   return (
     <View>
       {isWide ? (
         <View className="mb-3 flex-row items-start justify-between gap-3">
           <View>
-            <RNText className="text-base font-semibold" style={{ color: appTheme.colors.foreground }}>Activity</RNText>
+            <RNText className="text-base font-semibold" style={{ color: appTheme.colors.foreground }}>{copy?.title ?? "Activity"}</RNText>
             <RNText className="text-sm" style={{ color: appTheme.colors.muted }}>
-              {hasLoggedToday ? "Today logged. Keep it alive." : "Log today to light up the grid."}
+              {copy ? (hasLoggedToday ? copy.activeToday : copy.inactiveToday) : hasLoggedToday ? "Today logged. Keep it alive." : "Log today to light up the grid."}
             </RNText>
           </View>
           <View className="flex-row items-center gap-2">
-            <ActivityViewTabs view={view} onChange={handleViewChange} />
+            {fixedView ? null : <ActivityViewTabs view={view} onChange={handleViewChange} />}
             <View className="shrink-0 rounded-full px-2.5 py-1" style={{ backgroundColor: alpha(appTheme.colors.primary, 0.1) }}>
               <RNText className="text-xs font-semibold" style={{ color: appTheme.colors.primary }}>
-                {activity.currentStreak} day streak
+                {copy?.streak ?? `${activity.currentStreak} day streak`}
               </RNText>
             </View>
           </View>
         </View>
       ) : null}
 
-      <View className="flex-row flex-wrap items-center gap-2">
-        <RNText className="text-xs" style={{ color: appTheme.colors.muted }}>{t('cashflow.activityRecorded', { count: activity.totalEntries })}</RNText>
-        <RNText className="text-xs" style={{ color: appTheme.colors.muted }}>|</RNText>
-        <RNText className="text-xs" style={{ color: appTheme.colors.muted }}>{activity.activeDays} active days</RNText>
-        {!isWide ? (
-          <View className="ml-auto">
-            <ActivityViewTabs view={view} onChange={handleViewChange} compact />
-          </View>
-        ) : null}
-      </View>
+      {countsPosition === "above" ? countsRow : null}
+      {heatmap}
+      {countsPosition === "below" ? countsRow : null}
 
-      {view === "grid" ? (
-        <ActivityGrid activity={activity} selectedDate={selectedDate} onDateSelect={onDateSelect} />
-      ) : (
-        <ActivityCalendar activity={activity} selectedDate={selectedDate} onDateSelect={onDateSelect} />
-      )}
-
-      <HeatmapLegend />
+      {binary ? null : <HeatmapLegend />}
     </View>
   );
 }

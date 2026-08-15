@@ -91,7 +91,7 @@ export default function CategoriesFormSheet() {
 
       <ScrollView
         className="flex-1 bg-[--app-color-background]"
-        contentContainerClassName={`gap-5 px-5 pt-5 ${Platform.OS === "android" ? "pb-24" : "pb-10"}`}
+        contentContainerClassName={`gap-5 px-5 pt-5 ${Platform.OS === "android" ? "pb-24" : "pb-20"}`}
         contentInsetAdjustmentBehavior="automatic"
         keyboardShouldPersistTaps="handled"
         nestedScrollEnabled={Platform.OS === "android"}

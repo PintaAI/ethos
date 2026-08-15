@@ -132,7 +132,7 @@ export default function CategoryDetailScreen() {
         </Stack.Toolbar>
       ) : null}
 
-      <ScrollView className="flex-1 bg-[--app-color-background]" contentContainerClassName="gap-4 px-4 pb-12 pt-4" contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled" nestedScrollEnabled={Platform.OS === "android"}>
+      <ScrollView className="flex-1 bg-[--app-color-background]" contentContainerClassName="gap-4 px-4 pb-20 pt-4" contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled" nestedScrollEnabled={Platform.OS === "android"}>
         <View className="gap-4 rounded-[32px] border p-4" style={{ borderColor, backgroundColor: surface }}>
           <View className="flex-row items-center gap-4">
             <View className="h-24 w-24 items-center justify-center rounded-[30px]" style={{ backgroundColor: alpha(color, 0.16) }}>

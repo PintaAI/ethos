@@ -27,6 +27,7 @@ type ExtractInboundShareInput = {
   locale: string;
   currency: string;
   currentDate: string;
+  signal?: AbortSignal;
 };
 
 export function extractInboundShare(input: ExtractInboundShareInput): Promise<InboundShareExtraction> {
@@ -42,7 +43,7 @@ export function extractInboundShare(input: ExtractInboundShareInput): Promise<In
     return apiUploadFile<InboundShareExtraction>(
       "/inbound-share/extract",
       input.image,
-      { fieldName: "file", parameters },
+      { fieldName: "file", parameters, signal: input.signal },
     );
   }
 
@@ -51,5 +52,6 @@ export function extractInboundShare(input: ExtractInboundShareInput): Promise<In
   return apiFetch<InboundShareExtraction>("/inbound-share/extract", {
     method: "POST",
     body: formData,
+    signal: input.signal,
   });
 }

@@ -63,7 +63,7 @@ export async function publishTimeMapWidget(input: PublishTimeMapWidgetInput) {
     isDark: input.isDark,
     boxes: input.boxes.map((box) => ({
       id: box.id,
-      title: box.title,
+      title: box.name,
       startTime: box.startTime,
       endTime: box.endTime,
       breakDurations: box.breakDurations,

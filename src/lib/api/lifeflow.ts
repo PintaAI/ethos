@@ -1,6 +1,6 @@
 import { apiPost } from "./client";
 
-export type LifeFlowKind = "habit" | "habit_log" | "time_box" | "day_preset" | "day_preset_block" | "day_preset_schedule";
+export type LifeFlowKind = "item" | "habit_log" | "item_exception";
 
 export type LifeFlowSyncEntity = {
   kind: LifeFlowKind;
@@ -11,13 +11,12 @@ export type LifeFlowSyncEntity = {
 };
 
 export function syncLifeFlow(
-  managementId: string,
   entities: LifeFlowSyncEntity[],
   signal?: AbortSignal,
 ) {
   return apiPost<{ entities: LifeFlowSyncEntity[] }>(
     "/lifeflow/sync",
-    { managementId, entities },
+    { entities },
     { signal },
   );
 }

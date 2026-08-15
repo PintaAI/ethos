@@ -12,17 +12,17 @@ test("habit recurrence presets use JavaScript weekday numbers", () => {
 
 test("habit matching normalizes whitespace and case while excluding system habits", () => {
   const habits = [
-    { id: "system", name: "Read 1 page", isAppCheckIn: true, isJournalHabit: false },
-    { id: "custom", name: "  READ 1 PAGE ", isAppCheckIn: false, isJournalHabit: false },
+    { id: "system", name: "Read 1 page", kind: "habit", systemType: "app_check_in" },
+    { id: "custom", name: "  READ 1 PAGE ", kind: "habit", systemType: null },
   ];
   assert.equal(normalizeHabitName(" Read 1 Page "), "read 1 page");
   assert.equal(findMatchingCustomHabit(habits, "read 1 page")?.id, "custom");
 });
 
 test("finishing an edited habit replaces its draft without appending a duplicate", () => {
-  const original = { name: "Read", weekdays: [1], color: "blue", preferredDuration: 5 };
-  const untouched = { name: "Walk", weekdays: [2], color: "green", preferredDuration: 15 };
-  const edited = { name: "Read ten pages", weekdays: [1, 3], color: "purple", preferredDuration: 30 };
+  const original = { name: "Read", weekdays: [1], color: "blue" };
+  const untouched = { name: "Walk", weekdays: [2], color: "green" };
+  const edited = { name: "Read ten pages", weekdays: [1, 3], color: "purple" };
 
   assert.deepEqual(collectOnboardingHabitDrafts([original, untouched], edited, 0), [edited, untouched]);
   assert.deepEqual(collectOnboardingHabitDrafts([original], edited, null), [original, edited]);

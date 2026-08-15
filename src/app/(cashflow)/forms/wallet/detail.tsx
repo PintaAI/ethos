@@ -300,7 +300,7 @@ export default function WalletDetailScreen() {
 
       <ScrollView
         className="bg-[--app-color-background] flex-1"
-        contentContainerClassName="gap-4 px-4 pb-12 pt-4"
+        contentContainerClassName="gap-4 px-4 pb-20 pt-4"
         contentInsetAdjustmentBehavior="automatic"
         keyboardShouldPersistTaps="handled"
         nestedScrollEnabled={Platform.OS === "android"}

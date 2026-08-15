@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { Alert, Platform, Pressable, RefreshControl, ScrollView, Share, View } from "react-native";
+import { Alert, Platform, Pressable, RefreshControl, ScrollView, Share, Switch, View } from "react-native";
 import { router, Stack, type Href } from "expo-router";
 import { useTranslation } from "react-i18next";
 import { type SwipeableMethods } from "react-native-gesture-handler/ReanimatedSwipeable";
@@ -13,6 +13,7 @@ import { useDrawer } from "@/components/provider/DrawerContext";
 import { GlassBox } from "@/components/GlassBox";
 import { toolbarIcons } from "@/config/toolbarIcons";
 import { useNotesData } from "@/data/notes/NotesDataProvider";
+import { useLifeFlow } from "@/data/lifeflow/LifeFlowProvider";
 import type { CachedNote } from "@/data/notes/types";
 import { createNoteInvitation } from "@/lib/api/notes";
 import { authBaseURL } from "@/lib/auth-client";
@@ -26,6 +27,8 @@ export default function JournalScreen() {
   const { t } = useTranslation();
   const { isAuthenticated, isPending } = useAuth();
   const { notes, loading, refreshing, error, refresh, createNote, deleteNote, togglePin } = useNotesData();
+  const flow = useLifeFlow();
+  const journalEnabled = flow.items.some((item) => item.systemType === "journal");
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [selectedSegment, setSelectedSegment] = useState(0);
@@ -203,6 +206,21 @@ export default function JournalScreen() {
             }}
             style={{ width: "100%", display: isSelecting ? "none" : "flex" }}
           />
+
+          <View
+            className="flex-row items-center justify-between gap-3 rounded-2xl px-4 py-3"
+            style={{ backgroundColor: alpha(appTheme.colors.foreground, appTheme.isDark ? 0.06 : 0.035) }}
+          >
+            <View className="min-w-0 flex-1">
+              <Text className="font-bold" style={{ color: appTheme.colors.foreground }}>{t("lifeFlowItems.journalReminder")}</Text>
+              <Text className="text-xs" style={{ color: appTheme.colors.muted }}>{t("lifeFlowItems.journalReminderSubtitle")}</Text>
+            </View>
+            <Switch
+              accessibilityLabel={t("lifeFlowItems.journalReminder")}
+              value={journalEnabled}
+              onValueChange={(enabled) => void flow.setJournalItemEnabled(enabled)}
+            />
+          </View>
 
           {isSelecting ? (
             <View

@@ -10,9 +10,9 @@ import { publishTimeMapWidget } from "@/widgets/publishTimeMapWidget";
 export function TimeMapWidgetSync() {
   const { t, i18n } = useTranslation();
   const appTheme = useAppTheme();
-  const { loading, getTimeBoxesForDate } = useLifeFlow();
+  const { loading, getOccurrencesForDate } = useLifeFlow();
   const date = toDateKey(new Date());
-  const boxes = getTimeBoxesForDate(date);
+  const boxes = getOccurrencesForDate(date).filter((item): item is typeof item & { startTime: string; endTime: string } => item.startTime !== null && item.endTime !== null);
   const scheduledMinutes = boxes.reduce(
     (total, box) => total + getTimeBoxFocusDuration(box.startTime, box.endTime, box.breakDurations),
     0,

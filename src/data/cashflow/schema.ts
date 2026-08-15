@@ -1,8 +1,11 @@
 import type { SQLiteDatabase } from "expo-sqlite";
 import { withDbClearBarrier } from "@/lib/sync/dbLock";
 import { adoptLifeFlowScope, ensureLifeFlowScopeColumns } from "./lifeflowMigration22";
+import { migrateUnifiedLifeFlow } from "./lifeflowUnifiedMigration";
+import { migratePersonalLifeFlow } from "./lifeflowPersonalMigration";
+import { toDateKey } from "@/lib/date";
 
-const DATABASE_VERSION = 23;
+const DATABASE_VERSION = 25;
 
 async function hasColumn(db: SQLiteDatabase, table: string, column: string) {
   const columns = await db.getAllAsync<{ name: string }>(`PRAGMA table_info(${table})`);
@@ -664,6 +667,16 @@ export async function migrateCashflowDatabase(db: SQLiteDatabase) {
     currentVersion = 23;
   }
 
+  if (currentVersion < 24) {
+    await migrateUnifiedLifeFlow(db, toDateKey(new Date()));
+    currentVersion = 24;
+  }
+
+  if (currentVersion < 25) {
+    await migratePersonalLifeFlow(db);
+    currentVersion = 25;
+  }
+
   await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
 }
 
@@ -680,11 +693,8 @@ export async function clearCashflowDatabase(db: SQLiteDatabase) {
       DELETE FROM note_drafts;
       DELETE FROM note_cache;
       DELETE FROM habit_logs;
-      DELETE FROM time_boxes;
-      DELETE FROM day_preset_schedules;
-      DELETE FROM day_preset_blocks;
-      DELETE FROM day_presets;
-      DELETE FROM habits;
+      DELETE FROM item_exceptions;
+      DELETE FROM items;
       DELETE FROM lifeflow_tombstones;
       DELETE FROM managements;
       DELETE FROM users;

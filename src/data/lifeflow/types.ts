@@ -1,71 +1,66 @@
-export type Habit = {
+export type ItemKind = "habit" | "event";
+export type RecurrenceFrequency = "daily" | "weekly" | "monthly" | "yearly";
+export type Weekday = "MO" | "TU" | "WE" | "TH" | "FR" | "SA" | "SU";
+export type SystemItemType = "app_check_in" | "journal";
+
+export type Recurrence = {
+  frequency: RecurrenceFrequency;
+  interval: number;
+  weekdays: Weekday[];
+  endsOn: string | null;
+};
+
+export type Item = {
   id: string;
+  kind: ItemKind;
   name: string;
   color: string;
-  weekdays: number[];
-  preferredDuration: number;
-  isAppCheckIn: boolean;
-  isJournalHabit: boolean;
-  createdAt: string;
-};
-
-export type CreateHabitInput = Pick<Habit, "name" | "color" | "weekdays"> & { preferredDuration?: number };
-export type UpdateHabitInput = CreateHabitInput;
-
-export type HabitLog = {
-  habitId: string;
-  date: string;
-};
-
-export type TimeBox = {
-  id: string;
-  date: string;
-  title: string;
-  startTime: string;
-  endTime: string;
+  startsOn: string;
+  startTime: string | null;
+  endTime: string | null;
   breakDurations: number[];
-  color: string | null;
-  completed: boolean;
-  habitId: string | null;
+  recurrence: Recurrence | null;
+  systemType: SystemItemType | null;
   createdAt: string;
-  dismissed?: boolean;
-  presetScheduleId?: string | null;
-  presetBlockId?: string | null;
-  virtual?: boolean;
+  updatedAt: string;
 };
 
-export type CreateTimeBoxInput = Pick<TimeBox, "date" | "title" | "startTime" | "endTime"> & {
-  color?: string | null;
-  breakDurations?: number[];
-  habitId?: string | null;
+export type UnifiedHabitLog = {
+  itemId: string;
+  date: string;
+  completedAt: string;
+  updatedAt: string;
 };
 
-export type UpdateTimeBoxInput = Pick<TimeBox, "title" | "startTime" | "endTime" | "color" | "breakDurations">;
+export type ItemOccurrenceSnapshot = Pick<
+  Item,
+  "kind" | "name" | "color" | "startTime" | "endTime" | "breakDurations"
+>;
 
-export type DayPresetFrequency = "once" | "daily" | "weekly";
-
-export type CreateDayPresetInput = {
-  name: string;
-  startDate?: string;
-  frequency?: Exclude<DayPresetFrequency, "once">;
-  weekdays: number[];
-  blocks: Pick<TimeBox, "title" | "startTime" | "endTime" | "color" | "breakDurations">[];
+export type ItemException = {
+  itemId: string;
+  originalDate: string;
+  replacementDate: string | null;
+  cancelled: boolean;
+  replacement: ItemOccurrenceSnapshot | null;
+  createdAt: string;
+  updatedAt: string;
 };
-export type UpdateDayPresetInput = CreateDayPresetInput;
 
-export type DayPresetSchedule = {
+export type ItemOccurrence = ItemOccurrenceSnapshot & {
   id: string;
-  startDate: string;
-  frequency: DayPresetFrequency;
-  weekdays: number[];
+  itemId: string;
+  originalDate: string;
+  date: string;
+  completed: boolean;
+  overridden: boolean;
 };
 
-export type DayPreset = {
-  id: string;
-  name: string;
-  blocks: (Pick<TimeBox, "title" | "startTime" | "endTime" | "color" | "breakDurations"> & { id: string })[];
-  schedule: DayPresetSchedule | null;
+export type CreateItemInput = Omit<Item, "id" | "createdAt" | "updatedAt" | "systemType">;
+export type UpdateItemInput = Partial<Pick<Item, "name" | "color" | "startsOn" | "startTime" | "endTime" | "breakDurations" | "recurrence">>;
+export type OverrideOccurrenceInput = {
+  itemId: string;
+  originalDate: string;
+  replacementDate: string;
+  replacement: ItemOccurrenceSnapshot;
 };
-
-export type ApplyDayPresetResult = "applied" | "conflict" | "not-found";
-export type PlanHabitResult = "planned" | "already-planned" | "no-space" | "not-found";

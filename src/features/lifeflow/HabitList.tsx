@@ -2,196 +2,165 @@ import { Alert, Pressable, View } from "react-native";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
 import { useTranslation } from "react-i18next";
-
 import { AppSymbol } from "@/components/AppSymbol";
 import { AppText as Text } from "@/components/AppText";
-import { useAppTheme } from "@/components/provider/AppTheme";
 import { HabitHeatmap } from "@/components/lifeflow/HabitHeatmap";
-import type { Habit, HabitLog, TimeBox } from "@/data/lifeflow/types";
+import { useAppTheme } from "@/components/provider/AppTheme";
+import type {
+  Item,
+  ItemOccurrence,
+  UnifiedHabitLog,
+} from "@/data/lifeflow/types";
 import { alpha } from "@/lib/color";
 import { formatTimeRange12h } from "@/lib/date";
 
-type HabitListProps = {
-  allHabitsCount: number;
-  habits: Habit[];
-  habitLogs: HabitLog[];
-  timeBoxes: TimeBox[];
-  date: string;
-  planningHabitId: string | null;
-  onDeleteHabit: (id: string) => Promise<void>;
-  onPlanHabit: (id: string) => Promise<void>;
-  onSetCompleted: (id: string, completed: boolean) => Promise<void>;
-};
-
-export function HabitProgressSummary({ habits, completedHabitIds }: { habits: Habit[]; completedHabitIds: Set<string> }) {
+export function HabitProgressSummary({ habits }: { habits: ItemOccurrence[] }) {
   const { t } = useTranslation();
-  const appTheme = useAppTheme();
-  const completedCount = habits.filter((habit) => completedHabitIds.has(habit.id)).length;
-  const progress = habits.length === 0 ? 0 : Math.round((completedCount / habits.length) * 100);
-  const detailBackground = alpha(appTheme.colors.foreground, appTheme.isDark ? 0.08 : 0.045);
-
+  const theme = useAppTheme();
+  const done = habits.filter((item) => item.completed).length;
   return (
-    <View className="mb-1">
-      <View className="mb-4 flex-row items-center justify-between">
-        <View className="rounded-full px-2.5 py-1.5" style={{ backgroundColor: detailBackground }}>
-          <Text className="text-xs font-semibold uppercase tracking-[2px]" style={{ color: appTheme.colors.muted }}>
-            {t("atomicHabits.dailyProgress")}
-          </Text>
-        </View>
-        <View className="flex-row items-center gap-1.5">
-          <AppSymbol name="checkmark" size={14} tintColor={appTheme.colors.primary} />
-          <Text className="text-xs font-semibold" style={{ color: appTheme.colors.primary }}>
-            {completedCount} / {habits.length}
-          </Text>
-        </View>
+    <View className="gap-3">
+      <View className="flex-row justify-between">
+        <Text
+          className="text-xs font-bold uppercase"
+          style={{ color: theme.colors.muted }}
+        >
+          {t("atomicHabits.dailyProgress")}
+        </Text>
+        <Text style={{ color: theme.colors.primary }}>
+          {done}/{habits.length}
+        </Text>
       </View>
-
-      <Text className="mb-0.5 uppercase" style={{ color: appTheme.colors.muted, fontSize: 11, fontWeight: "600", letterSpacing: 1 }}>
-        {t("atomicHabits.completed")}
+      <Text
+        className="text-4xl font-black"
+        style={{ color: theme.colors.foreground }}
+      >
+        {habits.length ? Math.round((done / habits.length) * 100) : 0}%
       </Text>
-      <Text className="text-4xl font-black tracking-tight" style={{ color: appTheme.colors.foreground }}>
-        {progress}%
-      </Text>
-
-      <View className="mt-4 flex-row gap-1.5">
-        {habits.length === 0 ? (
-          <View className="h-2 flex-1 rounded-full" style={{ backgroundColor: alpha(appTheme.colors.foreground, 0.09) }} />
-        ) : habits.map((habit) => (
-          <View
-            key={habit.id}
-            className="h-2 flex-1 rounded-full"
-            style={{ backgroundColor: habit.isAppCheckIn ? appTheme.colors.primary : habit.color, opacity: completedHabitIds.has(habit.id) ? 1 : 0.16 }}
-          />
-        ))}
-      </View>
     </View>
   );
 }
 
 export function HabitList({
-  allHabitsCount,
-  habits,
-  habitLogs,
-  timeBoxes,
+  items,
+  occurrences,
+  logs,
   date,
-  planningHabitId,
-  onDeleteHabit,
-  onPlanHabit,
-  onSetCompleted,
-}: HabitListProps) {
+  onDelete,
+  onComplete,
+}: {
+  items: Item[];
+  occurrences: ItemOccurrence[];
+  logs: UnifiedHabitLog[];
+  date: string;
+  onDelete: (id: string) => Promise<void>;
+  onComplete: (id: string, completed: boolean) => Promise<void>;
+}) {
   const { t } = useTranslation();
-  const appTheme = useAppTheme();
-  const completedHabitIds = new Set(habitLogs.filter((log) => log.date === date).map((log) => log.habitId));
-
-  const confirmDelete = (id: string, habitName: string) => {
-    Alert.alert(t("atomicHabits.deleteTitle"), t("atomicHabits.deleteMessage", { name: habitName }), [
-      { text: t("common.cancel"), style: "cancel" },
-      { text: t("common.delete"), style: "destructive", onPress: () => void onDeleteHabit(id) },
-    ]);
-  };
-
-  const showHabitActions = (id: string, habitName: string) => {
-    Alert.alert(habitName, t("atomicHabits.manageHabit"), [
-      { text: t("common.cancel"), style: "cancel" },
-      { text: t("atomicHabits.editHabit"), onPress: () => router.push(`/forms/habit-add?habitId=${id}`) },
-      { text: t("common.delete"), style: "destructive", onPress: () => confirmDelete(id, habitName) },
-    ]);
-  };
-
+  const theme = useAppTheme();
+  if (items.length === 0)
+    return (
+      <Pressable
+        accessibilityRole="button"
+        onPress={() => router.push("/forms/habit-add")}
+        className="items-center gap-2 py-10"
+      >
+        <AppSymbol name="checklist" size={30} tintColor={theme.colors.muted} />
+        <Text style={{ color: theme.colors.muted }}>
+          {t("atomicHabits.empty")}
+        </Text>
+      </Pressable>
+    );
   return (
     <View className="gap-2">
-      <View className="flex-row items-center justify-between">
-        <Text className="text-sm font-bold uppercase tracking-wider" style={{ color: appTheme.colors.muted }}>{t("atomicHabits.habits")}</Text>
-        <Text className="text-xs" style={{ color: appTheme.colors.muted }}>{habits.length}</Text>
-      </View>
-      {allHabitsCount === 0 ? (
-        <Pressable accessibilityRole="button" onPress={() => router.push("/forms/habit-add")} className="items-center gap-2 py-10">
-          <AppSymbol name="checklist" size={30} tintColor={appTheme.colors.muted} />
-          <Text className="max-w-64 text-center text-sm" style={{ color: appTheme.colors.muted }}>{t("atomicHabits.empty")}</Text>
-        </Pressable>
-      ) : null}
-      {allHabitsCount > 0 && habits.length === 0 ? (
-        <View className="items-center gap-2 py-10">
-          <AppSymbol name="calendar" size={30} tintColor={appTheme.colors.muted} />
-          <Text className="max-w-64 text-center text-sm" style={{ color: appTheme.colors.muted }}>{t("atomicHabits.noneScheduled")}</Text>
-        </View>
-      ) : null}
-      {habits.map((habit) => {
-        const completed = completedHabitIds.has(habit.id);
-        const habitColor = habit.isAppCheckIn ? appTheme.colors.primary : habit.color;
-        const linkedBox = timeBoxes.find((box) => box.date === date && box.habitId === habit.id);
-        const isSystemHabit = habit.isAppCheckIn || habit.isJournalHabit;
-        const habitName = habit.isAppCheckIn
-          ? t("atomicHabits.appCheckIn")
-          : habit.isJournalHabit
-            ? t("atomicHabits.dailyJournal")
-            : habit.name;
-
+      {occurrences.map((occurrence) => {
+        const item = items.find((value) => value.id === occurrence.itemId)!;
+        const journal = item.systemType === "journal";
+        const checkIn = item.systemType === "app_check_in";
         return (
-          <View key={habit.id} className="gap-3 rounded-2xl px-3 py-3" style={{ backgroundColor: alpha(appTheme.colors.foreground, 0.045) }}>
-            <View className="flex-row items-center gap-3">
-              <Pressable
-                accessibilityRole={habit.isJournalHabit ? "button" : "checkbox"}
-                accessibilityState={habit.isJournalHabit ? undefined : { checked: completed, disabled: isSystemHabit }}
-                accessibilityLabel={habitName}
-                accessibilityHint={habit.isJournalHabit
-                  ? t("atomicHabits.openJournal")
-                  : isSystemHabit
-                    ? undefined
-                    : t("atomicHabits.longPressToDelete")}
-                disabled={habit.isAppCheckIn}
-                delayLongPress={500}
-                onPress={() => {
-                  if (habit.isJournalHabit) {
-                    router.push("/journal");
-                    return;
-                  }
-                  Haptics.selectionAsync().catch(() => {});
-                  void onSetCompleted(habit.id, !completed);
+          <View
+            key={occurrence.id}
+            className="gap-3 rounded-2xl p-3"
+            style={{ backgroundColor: alpha(theme.colors.foreground, 0.045) }}
+          >
+            <Pressable
+              accessibilityRole={journal ? "button" : checkIn ? "text" : "checkbox"}
+              accessibilityState={
+                journal || checkIn ? undefined : { checked: occurrence.completed }
+              }
+              accessibilityLabel={occurrence.name}
+              onPress={() => {
+                if (checkIn) return;
+                if (journal) {
+                  router.push("/journal");
+                  return;
+                }
+
+                void Haptics.selectionAsync().catch(() => {});
+                void onComplete(item.id, !occurrence.completed).catch((error) => {
+                  console.warn("Failed to update habit completion", error);
+                  void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+                  Alert.alert(t("common.error"));
+                });
+              }}
+              onLongPress={
+                item.systemType
+                  ? undefined
+                  : () =>
+                      Alert.alert(item.name, t("atomicHabits.manageHabit"), [
+                        { text: t("common.cancel"), style: "cancel" },
+                        {
+                          text: t("common.edit"),
+                          onPress: () =>
+                            router.push(`/forms/habit-add?itemId=${item.id}`),
+                        },
+                        {
+                          text: t("common.delete"),
+                          style: "destructive",
+                          onPress: () => void onDelete(item.id),
+                        },
+                      ])
+              }
+              className="flex-row items-center gap-3"
+            >
+              <View
+                className="h-10 w-10 items-center justify-center rounded-xl"
+                style={{
+                  backgroundColor: occurrence.completed
+                    ? item.color
+                    : alpha(item.color, 0.14),
                 }}
-                onLongPress={isSystemHabit ? undefined : () => showHabitActions(habit.id, habit.name)}
-                className="min-w-0 flex-1 flex-row items-center gap-3"
               >
-                <View
-                  className="h-10 w-10 items-center justify-center rounded-xl"
-                  style={{ backgroundColor: completed ? habitColor : alpha(habitColor, 0.14), borderColor: habitColor, borderWidth: 1 }}
+                {occurrence.completed ? (
+                  <AppSymbol name="checkmark" size={18} tintColor="#fff" />
+                ) : null}
+              </View>
+              <View className="flex-1">
+                <Text
+                  className="font-bold"
+                  style={{ color: theme.colors.foreground }}
                 >
-                  {completed ? <AppSymbol name="checkmark" size={18} tintColor="#FFFFFF" /> : <View className="h-2 w-2 rounded-full" style={{ backgroundColor: habitColor }} />}
-                </View>
-                <View className="min-w-0 flex-1 py-1">
-                  <Text numberOfLines={1} className="font-bold" style={{ color: completed ? appTheme.colors.muted : appTheme.colors.foreground, textDecorationLine: completed ? "line-through" : "none" }}>
-                    {habitName}
-                  </Text>
-                  <Text className="text-xs" style={{ color: appTheme.colors.muted }}>
-                    {completed
-                      ? t("atomicHabits.completed")
-                      : habit.isJournalHabit
-                        ? t("atomicHabits.journalToComplete")
-                        : linkedBox
-                          ? t("atomicHabits.plannedFor", { time: formatTimeRange12h(linkedBox.startTime, linkedBox.endTime) })
-                          : t("atomicHabits.tapToComplete")}
-                  </Text>
-                </View>
-              </Pressable>
-              {!isSystemHabit && !completed ? (
-                <Pressable
-                  accessibilityRole="button"
-                  disabled={planningHabitId === habit.id}
-                  onPress={() => linkedBox
-                    ? router.push(`/forms/schedule-block?boxId=${linkedBox.id}&date=${linkedBox.date}`)
-                    : void onPlanHabit(habit.id)}
-                  className="rounded-full px-3 py-2"
-                  style={{ backgroundColor: alpha(habitColor, appTheme.isDark ? 0.24 : 0.12), opacity: planningHabitId === habit.id ? 0.5 : 1 }}
-                >
-                  <Text className="text-xs font-bold" style={{ color: habitColor }}>
-                    {linkedBox ? t("atomicHabits.changeTime") : t("atomicHabits.plan")}
-                  </Text>
-                </Pressable>
-              ) : habit.isJournalHabit ? (
-                <AppSymbol name="chevron.right" size={15} tintColor={appTheme.colors.muted} />
+                  {item.name}
+                </Text>
+                <Text className="text-xs" style={{ color: theme.colors.muted }}>
+                  {journal
+                    ? t("atomicHabits.journalToComplete")
+                    : checkIn
+                      ? t("lifeFlowHome.habitForToday")
+                      : item.startTime
+                        ? formatTimeRange12h(item.startTime, item.endTime!)
+                        : t("atomicHabits.tapToComplete")}
+                </Text>
+              </View>
+              {journal ? (
+                <AppSymbol
+                  name="chevron.right"
+                  size={15}
+                  tintColor={theme.colors.muted}
+                />
               ) : null}
-            </View>
-            <HabitHeatmap habit={habit} logs={habitLogs} selectedDate={date} />
+            </Pressable>
+            <HabitHeatmap habit={item} logs={logs} selectedDate={date} />
           </View>
         );
       })}

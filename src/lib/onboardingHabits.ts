@@ -1,6 +1,6 @@
-import type { Habit } from "@/data/lifeflow/types";
+import type { Item } from "@/data/lifeflow/types";
 
-export type OnboardingHabitDraft = { name: string; weekdays: number[]; color: string; preferredDuration: number };
+export type OnboardingHabitDraft = { name: string; weekdays: number[]; color: string };
 
 export const HABIT_RECURRENCES = {
   daily: [0, 1, 2, 3, 4, 5, 6],
@@ -12,9 +12,9 @@ export function normalizeHabitName(name: string) {
   return name.trim().toLocaleLowerCase();
 }
 
-export function findMatchingCustomHabit(habits: Habit[], name: string) {
+export function findMatchingCustomHabit(habits: Item[], name: string) {
   const normalized = normalizeHabitName(name);
-  return habits.find((habit) => !habit.isAppCheckIn && !habit.isJournalHabit && normalizeHabitName(habit.name) === normalized);
+  return habits.find((habit) => habit.kind === "habit" && habit.systemType === null && normalizeHabitName(habit.name) === normalized);
 }
 
 export function collectOnboardingHabitDrafts(

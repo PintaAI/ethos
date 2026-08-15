@@ -12,13 +12,13 @@ import {
   type MaterializedRecurringEntry,
 } from "@/data/cashflow/repository";
 import { migrateCashflowDatabase } from "@/data/cashflow/schema";
-import { listDayPresets, listTimeBoxes } from "@/data/lifeflow/repository";
-import { resolveTimeBoxesForRange } from "@/data/lifeflow/recurrence";
+import { listItemExceptions, listItems, listUnifiedHabitLogs } from "@/data/lifeflow/unifiedRepository";
+import { resolveItemOccurrences } from "@/data/lifeflow/itemRecurrence";
 import { getDbLockGeneration, withDbLock } from "@/lib/sync/dbLock";
 import { toDateKey } from "@/lib/date";
 import { reconcileLocalRemindersAsync } from "@/lib/localReminders";
 import { prepareDefaultNotificationChannelAsync } from "@/lib/notifications";
-import { reconcileTimeBoxNotificationsAsync } from "@/lib/timeBoxNotifications";
+import { reconcileItemOccurrenceNotificationsAsync } from "@/lib/timeBoxNotifications";
 
 const DATABASE_NAME = "ethos-cashflow.db";
 const AUTOMATIC_ENTRY_TASK = "ethos-automatic-entries";
@@ -86,10 +86,10 @@ async function runAutomaticEntriesAsync() {
           shouldCancel: () => expired,
         });
         if (expired) return BackgroundTask.BackgroundTaskResult.Failed;
-        const [timeBoxes, dayPresets] = await Promise.all([listTimeBoxes(db), listDayPresets(db)]);
+        const [items, exceptions, habitLogs] = await Promise.all([listItems(db), listItemExceptions(db), listUnifiedHabitLogs(db)]);
         if (expired) return BackgroundTask.BackgroundTaskResult.Failed;
-        await reconcileTimeBoxNotificationsAsync(
-          resolveTimeBoxesForRange(toDateKey(new Date()), 14, timeBoxes, dayPresets),
+        await reconcileItemOccurrenceNotificationsAsync(
+          resolveItemOccurrences(toDateKey(new Date()), 14, items, exceptions, habitLogs),
           { requestPermission: false, shouldCancel: () => expired },
         );
         if (expired) return BackgroundTask.BackgroundTaskResult.Failed;

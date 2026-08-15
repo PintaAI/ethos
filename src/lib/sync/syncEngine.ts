@@ -89,14 +89,15 @@ function throwIfCancelled(signal?: AbortSignal) {
 }
 
 async function buildSyncScope(db: SQLiteDatabase): Promise<SyncScope> {
-  const managements = await db.getAllAsync<{ id: string; remote_id: string | null }>(
-    "SELECT id, remote_id FROM managements WHERE deleted_at IS NULL",
+  const managements = await db.getAllAsync<{ id: string; remote_id: string | null; deleted_at: string | null }>(
+    "SELECT id, remote_id, deleted_at FROM managements",
   );
 
   return {
     localManagementIds: new Set(managements.map((management) => management.id)),
     remoteManagementIds: new Set(
       managements
+        .filter((management) => management.deleted_at === null)
         .map((management) => management.remote_id)
         .filter((remoteId): remoteId is string => remoteId !== null),
     ),
@@ -818,21 +819,14 @@ export async function syncNow(db: SQLiteDatabase, options: SyncOptions = {}): Pr
     const localManagements = (await listLocalManagementsWithRemoteId(db)).filter((management) =>
       scope.remoteManagementIds.has(management.remote_id),
     );
-    const activeManagement = await db.getFirstAsync<{ value: string }>(
-      "SELECT value FROM app_preferences WHERE key = 'active_management_id'",
-    );
-    const lifeFlowManagement = localManagements.find((management) => management.id === activeManagement?.value)
-      ?? localManagements[0];
-    for (const mgmt of lifeFlowManagement ? [lifeFlowManagement] : []) {
-      throwIfCancelled(signal);
-      try {
-        const lifeFlow = await reconcileLifeFlow(db, mgmt.id, mgmt.remote_id, signal);
-        summary.pushed += lifeFlow.pushed;
-        summary.pulled += lifeFlow.pulled;
-      } catch (error) {
-        console.warn("[sync] lifeflow failed", mgmt.remote_id, error);
-        summary.errors += 1;
-      }
+    throwIfCancelled(signal);
+    try {
+      const lifeFlow = await reconcileLifeFlow(db, signal);
+      summary.pushed += lifeFlow.pushed;
+      summary.pulled += lifeFlow.pulled;
+    } catch (error) {
+      console.warn("[sync] lifeflow failed", error);
+      summary.errors += 1;
     }
     for (const mgmt of localManagements) {
       throwIfCancelled(signal);

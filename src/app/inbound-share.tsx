@@ -18,6 +18,8 @@ import { useTranslation } from "react-i18next";
 
 const MAX_IMAGE_SIZE = 4 * 1024 * 1024;
 const MAX_TEXT_PREVIEW = 240;
+const SHARE_RESOLUTION_TIMEOUT = 15_000;
+const EXTRACTION_TIMEOUT = 45_000;
 
 const SCAN_STEPS = [
   "inboundShare.steps.reading",
@@ -77,6 +79,7 @@ export default function InboundShareScreen() {
   const [stepIndex, setStepIndex] = useState(0);
   const [completed, setCompleted] = useState(false);
   const processingKeyRef = useRef<string | null>(null);
+  const requestControllerRef = useRef<AbortController | null>(null);
   const [scanLine] = useState(() => new Animated.Value(0));
   const progressRef = useRef(0);
 
@@ -91,6 +94,17 @@ export default function InboundShareScreen() {
   const signedOut = !auth.isPending && !auth.isAuthenticated;
   const visibleError = shareError?.message ?? error;
   const scanning = !!previewImage && !signedOut && !visibleError && !completed;
+  const waitingForSharedContent = isResolving || (
+    sharedPayloads.length > 0 && resolvedSharedPayloads.length === 0
+  );
+
+  useEffect(() => {
+    if (!waitingForSharedContent || shareError) return;
+    const timeout = setTimeout(() => {
+      setError(t("inboundShare.loadTimeout"));
+    }, SHARE_RESOLUTION_TIMEOUT);
+    return () => clearTimeout(timeout);
+  }, [attempt, shareError, t, waitingForSharedContent]);
 
   // Ornamental scanning sweep over the image, looped only while scanning.
   useEffect(() => {
@@ -161,6 +175,14 @@ export default function InboundShareScreen() {
     }
 
     let cancelled = false;
+    let timedOut = false;
+    const controller = new AbortController();
+    requestControllerRef.current = controller;
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+      if (!cancelled) setError(t("inboundShare.processingTimeout"));
+    }, EXTRACTION_TIMEOUT);
     queueMicrotask(() => {
       if (!cancelled) setError(null);
     });
@@ -172,9 +194,12 @@ export default function InboundShareScreen() {
       locale: getLocales()[0]?.languageTag ?? "en",
       currency: currency.currency,
       currentDate: toDateKey(new Date()),
+      signal: controller.signal,
     })
       .then((result) => {
         if (cancelled) return;
+        clearTimeout(timeout);
+        if (requestControllerRef.current === controller) requestControllerRef.current = null;
 
         const sourceCurrency = result.draft.currency ?? currency.currency;
         const sourceRate = currency.rates[sourceCurrency];
@@ -215,13 +240,19 @@ export default function InboundShareScreen() {
         }, 480);
       })
       .catch((caughtError) => {
-        if (!cancelled) {
+        clearTimeout(timeout);
+        if (requestControllerRef.current === controller) requestControllerRef.current = null;
+        if (!cancelled && !timedOut) {
           setError(caughtError instanceof Error ? caughtError.message : t("inboundShare.failed"));
         }
       });
 
     return () => {
       cancelled = true;
+      clearTimeout(timeout);
+      controller.abort();
+      if (requestControllerRef.current === controller) requestControllerRef.current = null;
+      if (processingKeyRef.current === processingKey) processingKeyRef.current = null;
     };
   }, [
     activeManagement?.remoteId,
@@ -241,10 +272,14 @@ export default function InboundShareScreen() {
   ]);
 
   const close = () => {
+    requestControllerRef.current?.abort();
+    requestControllerRef.current = null;
     clearSharedPayloads();
     router.replace("/");
   };
   const retry = () => {
+    requestControllerRef.current?.abort();
+    requestControllerRef.current = null;
     processingKeyRef.current = null;
     progressRef.current = 0;
     setError(null);
@@ -397,7 +432,7 @@ export default function InboundShareScreen() {
               </AppText>
             </Pressable>
           ) : null}
-          {(signedOut || visibleError) ? (
+          {!completed ? (
             <Pressable className="min-h-11 items-center justify-center" onPress={close}>
               <AppText className="font-medium" style={{ color: appTheme.colors.muted }}>
                 {t("common.cancel")}

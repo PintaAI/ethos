@@ -18,8 +18,6 @@ type Mode = "cloud" | "offline";
 type Recurrence = keyof typeof HABIT_RECURRENCES | "custom";
 type Draft = OnboardingHabitDraft;
 
-const habitDurations = [1, 5, 15, 30, 60] as const;
-
 export default function LifeFlowSetup() {
   const { mode } = useLocalSearchParams<{ mode?: Mode }>();
   const { t } = useTranslation();
@@ -28,51 +26,57 @@ export default function LifeFlowSetup() {
   const sync = useSyncStatus();
   const insets = useSafeAreaInsets();
   const [name, setName] = useState("");
-  const [preferredDuration, setPreferredDuration] = useState<number>(5);
   const [recurrence, setRecurrence] = useState<Recurrence>("daily");
   const [customDays, setCustomDays] = useState<number[]>([]);
   const [color, setColor] = useState(TIME_BOX_COLORS[0]);
   const [drafts, setDrafts] = useState<Draft[]>([]);
+  const [dailyJournal, setDailyJournal] = useState(false);
   const [editing, setEditing] = useState<number | null>(null);
   const [savingAction, setSavingAction] = useState<"finish" | "skip" | null>(null);
   const saving = savingAction !== null;
   const weekdays = recurrence === "custom" ? customDays : [...HABIT_RECURRENCES[recurrence]];
   const valid = !!name.trim() && weekdays.length > 0;
-  const existingMatch = findMatchingCustomHabit(growth.habits, name);
-  const existingHabits = growth.habits.filter((habit) => !habit.isAppCheckIn && !habit.isJournalHabit);
+  const habits = growth.items.filter((item) => item.kind === "habit");
+  const existingMatch = findMatchingCustomHabit(habits, name);
+  const existingHabits = habits.filter((habit) => habit.systemType === null);
   const borderColor = alpha(appTheme.colors.foreground, appTheme.isDark ? 0.09 : 0.07);
   const canFinish = valid || drafts.length > 0;
 
   function resetDraft() {
-    setName(""); setPreferredDuration(5); setRecurrence("daily"); setCustomDays([]); setColor(TIME_BOX_COLORS[0]); setEditing(null);
+    setName(""); setRecurrence("daily"); setCustomDays([]); setColor(TIME_BOX_COLORS[0]); setEditing(null);
   }
 
   function addDraft() {
     if (!valid) return;
-    const draft = { name: name.trim(), weekdays, color, preferredDuration };
+    const draft = { name: name.trim(), weekdays, color };
     setDrafts((current) => editing === null ? [...current, draft] : current.map((item, index) => index === editing ? draft : item));
     resetDraft();
   }
 
   function editDraft(index: number) {
     const draft = drafts[index];
-    setEditing(index); setName(draft.name); setColor(draft.color); setPreferredDuration(draft.preferredDuration);
+    setEditing(index); setName(draft.name); setColor(draft.color);
     setRecurrence("custom"); setCustomDays(draft.weekdays);
   }
 
   async function finish(skip = false) {
     if (saving || growth.loading || (mode !== "cloud" && mode !== "offline")) return;
-    const activeDraft = valid ? { name: name.trim(), weekdays, color, preferredDuration } : null;
+    const activeDraft = valid ? { name: name.trim(), weekdays, color } : null;
     const allDrafts = skip ? [] : collectOnboardingHabitDrafts(drafts, activeDraft, editing);
     if (!skip && allDrafts.length === 0) return;
     setSavingAction(skip ? "skip" : "finish");
     try {
       const unique = [...new Map(allDrafts.map((draft) => [normalizeHabitName(draft.name), draft])).values()];
       for (const draft of unique) {
-        const match = findMatchingCustomHabit(growth.habits, draft.name);
-        if (match) await growth.updateHabit(match.id, draft);
-        else await growth.createHabit(draft);
+        const match = findMatchingCustomHabit(habits, draft.name);
+        const weekdayCodes = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"] as const;
+        const recurrence = draft.weekdays.length === 7
+          ? { frequency: "daily" as const, interval: 1, weekdays: [], endsOn: null }
+          : { frequency: "weekly" as const, interval: 1, weekdays: draft.weekdays.map((day) => weekdayCodes[day]), endsOn: null };
+        if (match) await growth.updateItem(match.id, { name: draft.name, color: draft.color, recurrence }, true);
+        else await growth.createItem({ kind: "habit", name: draft.name, color: draft.color, startsOn: growth.today, startTime: null, endTime: null, breakDurations: [], recurrence });
       }
+      await growth.setJournalItemEnabled(dailyJournal);
       await sync.setCloudSyncEnabled(mode === "cloud");
       await setPreference("hasSkippedOnboarding", true);
       const homeSection = await getPreference("lastHomeSection");
@@ -180,43 +184,6 @@ export default function LifeFlowSetup() {
 
           <View className="gap-3">
             <Text className="text-xs font-bold uppercase tracking-[2px]" style={{ color: appTheme.colors.muted }}>
-              {t("lifeFlowSetup.tinyHabit")}
-            </Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ overflow: "visible" }} contentContainerStyle={{ gap: 8, overflow: "visible" }}>
-              {habitDurations.map((minutes) => {
-                const selected = preferredDuration === minutes;
-                const label = minutes === 1
-                  ? t("lifeFlowSetup.durationMinute")
-                  : minutes === 60
-                    ? t("lifeFlowSetup.durationHour")
-                    : t("lifeFlowSetup.durationMinutes", { minutes });
-                return (
-                  <GlassBox
-                    key={minutes}
-                    isInteractive
-                    tintColor={selected ? appTheme.colors.primary : alpha(appTheme.colors.primary, appTheme.isDark ? 0.2 : 0.1)}
-                    glassEffectStyle="clear"
-                    style={{ borderRadius: 9999 }}
-                  >
-                    <Pressable
-                      accessibilityRole="radio"
-                      accessibilityState={{ selected, disabled: growth.loading }}
-                      disabled={growth.loading}
-                      onPress={() => setPreferredDuration(minutes)}
-                      className="rounded-full px-4 py-3"
-                    >
-                      <Text className="font-semibold" style={{ color: selected ? appTheme.colors.inverseForeground : appTheme.colors.primary }}>
-                        {label}
-                      </Text>
-                    </Pressable>
-                  </GlassBox>
-                );
-              })}
-            </ScrollView>
-          </View>
-
-          <View className="gap-3">
-            <Text className="text-xs font-bold uppercase tracking-[2px]" style={{ color: appTheme.colors.muted }}>
               {t("lifeFlowSetup.rhythm")}
             </Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ overflow: "visible" }} contentContainerStyle={{ gap: 8, overflow: "visible" }}>
@@ -312,11 +279,6 @@ export default function LifeFlowSetup() {
                 {t("lifeFlowSetup.commitment", {
                   rhythm: t(`lifeFlowSetup.recurrence.${recurrence}`),
                   habit: name.trim(),
-                  duration: preferredDuration === 1
-                    ? t("lifeFlowSetup.durationMinute")
-                    : preferredDuration === 60
-                      ? t("lifeFlowSetup.durationHour")
-                      : t("lifeFlowSetup.durationMinutes", { minutes: preferredDuration }),
                 })}
               </Text>
             </View>
@@ -341,6 +303,11 @@ export default function LifeFlowSetup() {
             </Pressable>
           </GlassBox>
         </View>
+
+        <Pressable accessibilityRole="switch" accessibilityState={{ checked: dailyJournal }} onPress={() => setDailyJournal((enabled) => !enabled)} className="mx-2 flex-row items-center justify-between rounded-2xl p-4" style={{ backgroundColor: alpha(appTheme.colors.primary, appTheme.isDark ? 0.14 : 0.07) }}>
+          <View className="min-w-0 flex-1 pr-4"><Text className="font-bold" style={{ color: appTheme.colors.foreground }}>{t("lifeFlowItems.trackJournal")}</Text><Text className="text-xs" style={{ color: appTheme.colors.muted }}>{t("lifeFlowItems.trackJournalDescription")}</Text></View>
+          <Text className="font-bold" style={{ color: appTheme.colors.primary }}>{dailyJournal ? t("common.on") : t("common.off")}</Text>
+        </Pressable>
 
         {drafts.length > 0 ? (
           <View className="gap-3 px-1">

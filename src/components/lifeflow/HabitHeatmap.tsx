@@ -1,121 +1,88 @@
-import { useEffect, useMemo, useRef } from "react";
-import { ScrollView, View } from "react-native";
+import { useState } from "react";
+import { View } from "react-native";
 import { useTranslation } from "react-i18next";
-
 import { AppText as Text } from "@/components/AppText";
 import { useAppTheme } from "@/components/provider/AppTheme";
-import type { Habit, HabitLog } from "@/data/lifeflow/types";
-import { addDays, parseDateKey, toDateKey } from "@/lib/date";
-import { getHabitCreationDate } from "@/lib/habit";
+import type { Item, UnifiedHabitLog } from "@/data/lifeflow/types";
+import { recurrenceAppliesOnDate } from "@/data/lifeflow/itemRecurrence";
+import { alpha } from "@/lib/color";
+import { addDaysToDateKey, parseDateKey, toDateKey } from "@/lib/date";
 
-const UPCOMING_DAYS = 17 * 7;
-type HabitHeatmapProps = {
-  habit: Habit;
-  logs: HabitLog[];
-  selectedDate: string;
-};
-
-function buildColumns(logs: HabitLog[], habit: Habit) {
-  const today = new Date();
-  const todayKey = toDateKey(today);
-  const creationDate = getHabitCreationDate(habit.createdAt) ?? todayKey;
-  const horizon = addDays(today, UPCOMING_DAYS);
-  const completedDates = new Set(logs.filter((log) => log.habitId === habit.id).map((log) => log.date));
-  const occurrences: { date: string; count: number; future: boolean }[] = [];
-
-  for (let date = parseDateKey(creationDate); date <= horizon; date = addDays(date, 1)) {
-    if (!habit.weekdays.includes(date.getDay())) continue;
-    const key = toDateKey(date);
-    occurrences.push({ date: key, count: Number(completedDates.has(key)), future: key > todayKey });
-  }
-
-  const rowCount = habit.weekdays.length;
-  const columns: typeof occurrences[] = [];
-  for (let index = 0; index < occurrences.length; index += rowCount) {
-    columns.push(occurrences.slice(index, index + rowCount));
-  }
-  return columns;
-}
-
-function getColor(count: number, color: string, empty: string) {
-  if (count < 0) return "transparent";
-  if (count === 0) return empty;
-  return color;
-}
-
-export function HabitHeatmap({ habit, logs, selectedDate }: HabitHeatmapProps) {
+export function HabitHeatmap({ habit, logs, selectedDate }: { habit: Item; logs: UnifiedHabitLog[]; selectedDate: string }) {
   const { t, i18n } = useTranslation();
-  const appTheme = useAppTheme();
-  const scrollRef = useRef<ScrollView>(null);
-  const columns = useMemo(() => buildColumns(logs, habit), [habit, logs]);
-  const days = columns.flat();
-  const empty = appTheme.isDark ? "rgba(255,255,255,0.09)" : "rgba(15,23,42,0.08)";
-  const habitColor = habit.isAppCheckIn ? appTheme.colors.primary : habit.color;
-  const locale = i18n.resolvedLanguage ?? i18n.language;
-  const firstColumn = columns[0] ?? [];
-  const dayLabels = firstColumn.map((day) => {
-    const weekday = parseDateKey(day.date).getDay();
-    return (
-    habit.weekdays.length < 7 || [1, 3, 5].includes(weekday)
-      ? parseDateKey(day.date).toLocaleDateString(locale, { weekday: "short" })
-      : ""
-    );
-  });
+  const theme = useAppTheme();
+  const [gridWidth, setGridWidth] = useState(0);
+  const today = toDateKey(new Date());
+  const completed = new Set(logs.filter((log) => log.itemId === habit.id).map((log) => log.date));
+  const rowCount = habit.recurrence?.frequency === "weekly"
+    ? Math.max(1, habit.recurrence.weekdays.length)
+    : habit.recurrence?.frequency === "daily"
+      ? 7
+      : 1;
+  const columnCount = Math.max(1, Math.floor((gridWidth + 4) / 16));
+  const targetDateCount = columnCount * rowCount;
+  const recurrenceInterval = habit.recurrence?.interval ?? 1;
+  const preferredStart = addDaysToDateKey(today, -Math.floor(columnCount * 2 / 3) * 7 * recurrenceInterval);
+  const rangeStart = habit.startsOn > preferredStart ? habit.startsOn : preferredStart;
+  const dates: string[] = [];
+  let cursor = rangeStart;
 
-  useEffect(() => {
-    const selectedIndex = days.findIndex((day) => day.date === selectedDate);
-    requestAnimationFrame(() => {
-      if (selectedIndex >= 0) {
-        scrollRef.current?.scrollTo({ x: Math.max(0, Math.floor(selectedIndex / habit.weekdays.length) * 18 - 120), animated: true });
-        return;
-      }
-      scrollRef.current?.scrollToEnd({ animated: false });
-    });
-  }, [days, habit.weekdays.length, selectedDate]);
+  for (let scannedDays = 0; dates.length < targetDateCount && scannedDays < 10_000; scannedDays += 1) {
+    if (habit.recurrence?.endsOn && cursor > habit.recurrence.endsOn) break;
+    if (recurrenceAppliesOnDate(habit, cursor)) dates.push(cursor);
+    cursor = addDaysToDateKey(cursor, 1);
+  }
+
+  const columns = Array.from(
+    { length: Math.ceil(dates.length / rowCount) },
+    (_, index) => dates.slice(index * rowCount, index * rowCount + rowCount),
+  );
+  const firstColumn = columns[0] ?? [];
 
   return (
     <View className="flex-row gap-2">
       <View className="shrink-0 gap-1">
-        {dayLabels.map((label, index) => (
-          <View key={`${label}-${index}`} className="h-3 justify-center">
-            <Text className="text-xs leading-4" style={{ color: appTheme.colors.muted }}>
-              {label}
+        {firstColumn.map((date, index) => (
+          <View key={date} className="h-3 justify-center">
+            <Text className="text-xs leading-4" style={{ color: theme.colors.muted }}>
+              {rowCount < 7 || index % 2 === 0
+                ? parseDateKey(date).toLocaleDateString(i18n.resolvedLanguage, { weekday: "short" })
+                : ""}
             </Text>
           </View>
         ))}
       </View>
-      <ScrollView
-        ref={scrollRef}
-        horizontal
-        showsHorizontalScrollIndicator={false}
+      <View
+        onLayout={(event) => setGridWidth(Math.round(event.nativeEvent.layout.width))}
         className="min-w-0 flex-1"
-        contentContainerClassName="gap-1 pb-1"
+        style={{
+          flexDirection: "row",
+          gap: 4,
+          justifyContent: columns.length === columnCount ? "space-between" : "flex-start",
+        }}
       >
-        {columns.map((column, index) => (
-          <View key={column[0]?.date ?? index} className="gap-1">
-            {column.map((day) => {
-              const selected = day.date === selectedDate;
-              return (
-                <View
-                  key={day.date}
-                  accessible
-                  accessibilityState={{ selected, disabled: day.future }}
-                  accessibilityLabel={t("atomicHabits.heatmapDay", {
-                    date: parseDateKey(day.date).toLocaleDateString(locale),
-                    count: Math.max(0, day.count),
-                  })}
-                  className="h-3 w-3 rounded-[3px]"
-                  style={{
-                    backgroundColor: getColor(day.count, habitColor, empty),
-                    borderColor: selected ? habitColor : "transparent",
-                    borderWidth: selected ? 2 : 0,
-                  }}
-                />
-              );
-            })}
+        {columns.map((column) => (
+          <View key={column[0]} className="gap-1">
+            {column.map((date) => (
+              <View
+                key={date}
+                accessible
+                accessibilityState={{ selected: date === selectedDate, disabled: date > today }}
+                accessibilityLabel={t("atomicHabits.heatmapDay", {
+                  date: parseDateKey(date).toLocaleDateString(i18n.resolvedLanguage),
+                  count: Number(completed.has(date)),
+                })}
+                className="h-3 w-3 rounded-[3px]"
+                style={{
+                  backgroundColor: completed.has(date) ? habit.color : alpha(theme.colors.foreground, 0.12),
+                  borderColor: date === selectedDate ? habit.color : "transparent",
+                  borderWidth: date === selectedDate ? 2 : 0,
+                }}
+              />
+            ))}
           </View>
         ))}
-      </ScrollView>
+      </View>
     </View>
   );
 }
