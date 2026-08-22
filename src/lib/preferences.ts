@@ -34,8 +34,12 @@ export type Preferences = {
   cashflowCompactAmounts: boolean;
   cashflowAmountsVisible: boolean;
   cashflowStatsPeriod: CashflowStatsPeriod;
+  appStoreReviewCompleted: boolean;
+  appStoreReviewEntryCount: number;
+  appStoreReviewLastPromptAt: string | null;
   cloudSyncEnabled: boolean;
   currency: string;
+  recentCurrencies: string[];
   exchangeRates: Record<string, number> | null;
   timeBoxSleepRange: TimeBoxPresetRange;
   timeBoxWorkRange: TimeBoxPresetRange;
@@ -58,8 +62,12 @@ const preferenceDefaults: Preferences = {
   cashflowCompactAmounts: true,
   cashflowAmountsVisible: true,
   cashflowStatsPeriod: "allTime",
+  appStoreReviewCompleted: false,
+  appStoreReviewEntryCount: 0,
+  appStoreReviewLastPromptAt: null,
   cloudSyncEnabled: true,
   currency: "IDR",
+  recentCurrencies: [],
   exchangeRates: null,
   timeBoxSleepRange: { startTime: "22:00", endTime: "06:00" },
   timeBoxWorkRange: { startTime: "09:00", endTime: "17:00" },
@@ -93,7 +101,13 @@ export async function removePreference(key: keyof Preferences): Promise<void> {
 }
 
 export async function clearPreferences(options?: { preserveOnboarding?: boolean }): Promise<void> {
+  const devicePreferences = new Set<keyof Preferences>([
+    "appStoreReviewCompleted",
+    "appStoreReviewEntryCount",
+    "appStoreReviewLastPromptAt",
+  ]);
   const keys = (Object.keys(preferenceDefaults) as (keyof Preferences)[])
+    .filter((key) => !devicePreferences.has(key))
     .filter((key) => !options?.preserveOnboarding || key !== "hasSkippedOnboarding")
     .map(getStorageKey);
 

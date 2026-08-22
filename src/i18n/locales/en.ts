@@ -348,6 +348,10 @@ const en = {
       spendingToday: "What are you spending on today?",
     },
   },
+  currencyPicker: {
+    title: "Choose currency",
+    base: "Base currency",
+  },
   quickFill: {
     title: "Quick Fill",
     description: "Save frequent spending labels, amounts, and categories for the quick-fill row in entry-form.",
@@ -877,6 +881,12 @@ const en = {
   imageUpload: {
     tooLarge: "Choose an image smaller than 5 MB.",
     unsupportedType: "Choose a JPEG, PNG, WebP, or GIF image. HEIC and HEIF are not supported.",
+  },
+  appReview: {
+    title: "Enjoying Ethos?",
+    message: "A quick App Store review helps more people discover Ethos.",
+    later: "Maybe later",
+    review: "Review Ethos",
   },
   walletSetup: {
     title: "Wallet Setup", heading: "Make Cashflow yours", description: "Set up your first wallet.",

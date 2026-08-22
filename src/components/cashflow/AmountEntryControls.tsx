@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Pressable, TextInput, View } from "react-native";
 
 import { AppText as Text } from "@/components/AppText";
@@ -16,13 +17,53 @@ export function formatAmountDigits(value: string) {
 export function CashflowAmountInput({
   amountText,
   currencySymbol,
+  currencyControl,
   onAmountTextChange,
 }: {
   amountText: string;
   currencySymbol: string;
+  currencyControl?: ReactNode;
   onAmountTextChange: (value: string) => void;
 }) {
   const appTheme = useAppTheme();
+  const formattedAmount = formatAmountDigits(amountText || "0");
+  const inputWidth = Math.min(
+    280,
+    Math.max(48, [...formattedAmount].reduce((width, character) => width + (character === "." ? 20 : 43), 8)),
+  );
+
+  if (currencyControl) {
+    return (
+      <View className="h-24 w-full flex-row items-center justify-center">
+        {currencyControl}
+        <TextInput
+          className="text-7xl font-bold tracking-tight"
+          inputMode="numeric"
+          keyboardType="number-pad"
+          placeholder="0"
+          placeholderTextColor={appTheme.colors.muted}
+          selectionColor={appTheme.colors.primary}
+          style={{
+            color: appTheme.colors.foreground,
+            fontSize: 72,
+            fontWeight: "700",
+            height: 96,
+            includeFontPadding: false,
+            letterSpacing: -1.8,
+            lineHeight: 84,
+            paddingHorizontal: 0,
+            paddingVertical: 0,
+            textAlign: "left",
+            textAlignVertical: "center",
+            transform: [{ translateY: -4 }],
+            width: inputWidth,
+          }}
+          value={amountText ? formattedAmount : ""}
+          onChangeText={(text) => onAmountTextChange(text.replace(/\D/g, ""))}
+        />
+      </View>
+    );
+  }
 
   return (
     <TextInput

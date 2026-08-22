@@ -7,16 +7,16 @@ import { useAppTheme } from "@/components/provider/AppTheme";
 import { useDrawer } from "@/components/provider/DrawerContext";
 import { CashflowTable } from "@/components/cashflow/CashflowTable";
 import { CashflowCalendar } from "@/components/cashflow/CashflowCalendar";
-import { useSyncStatus } from "@/components/provider/SyncProvider";
 import { useCashflowData } from "@/data/cashflow/CashflowDataProvider";
 import { AppSegmentedControl } from "@/components/AppSegmentedControl";
 import { getPreference, setPreference } from "@/lib/preferences";
+import { useSyncRefresh } from "@/lib/sync/useSyncRefresh";
 
 export default function CashflowScreen() {
   const { t } = useTranslation();
   const { open } = useDrawer();
   const appTheme = useAppTheme();
-  const sync = useSyncStatus();
+  const { refreshing, onRefresh } = useSyncRefresh();
   const { entries } = useCashflowData();
   const [view, setView] = useState<"list" | "calendar">("list");
 
@@ -55,8 +55,8 @@ export default function CashflowScreen() {
             entries={entries}
             refreshControl={
               <RefreshControl
-                refreshing={sync.status === "syncing"}
-                onRefresh={() => void sync.syncNow()}
+                refreshing={refreshing}
+                onRefresh={onRefresh}
                 tintColor={appTheme.colors.primary}
                 colors={[appTheme.colors.primary]}
                 progressBackgroundColor={appTheme.colors.background}
@@ -71,8 +71,8 @@ export default function CashflowScreen() {
           contentInsetAdjustmentBehavior="automatic"
           refreshControl={
             <RefreshControl
-              refreshing={sync.status === "syncing"}
-              onRefresh={() => void sync.syncNow()}
+              refreshing={refreshing}
+              onRefresh={onRefresh}
               tintColor={appTheme.colors.primary}
               colors={[appTheme.colors.primary]}
               progressBackgroundColor={appTheme.colors.background}

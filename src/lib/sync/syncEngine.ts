@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from "expo-sqlite";
 import { ApiError } from "@/lib/api/client";
-import { createEntry, deleteEntry, listAllEntries, updateEntry } from "@/lib/api/entries";
+import { createEntry, deleteEntry, getEntrySyncPage, listAllEntries, pushEntrySyncBatch, updateEntry } from "@/lib/api/entries";
 import { createManagement, deleteManagement, listManagements, updateManagement, updateManagementImage } from "@/lib/api/managements";
 import { deleteOwnedWalletImage, isOwnedWalletImage, walletImageUploadMetadata } from "@/lib/walletImages";
 import { createCategory, deleteCategory, listCategories, updateCategory } from "@/lib/api/categories";
@@ -18,6 +18,8 @@ import type {
   ServerOverallBudget,
   ServerQuickFill,
   ServerRecurringEntry,
+  EntrySyncMutation,
+  EntrySyncRecord,
 } from "@/lib/api/types";
 import {
   hardDeleteById,
@@ -25,6 +27,9 @@ import {
   listDirty,
   markSynced,
   setLastPulledAt,
+  getEntrySyncCursor,
+  isEntrySyncBootstrapped,
+  resetEntrySyncCursor,
   upsertByRemoteId,
 } from "./syncStatus";
 import {
@@ -37,7 +42,6 @@ import {
   localCategoryToCreate,
   localCategoryToUpdate,
   localEntryToCreate,
-  localEntryToUpdate,
   localManagementToCreate,
   localManagementToUpdate,
   localOverallBudgetToUpsert,
@@ -66,12 +70,17 @@ import {
   type RecurringEntryUpsertFields,
 } from "./reconcile";
 import { reconcileLifeFlow } from "./lifeflowSync";
+import { getDbLockGeneration, withDbLock } from "./dbLock";
+import { sqlitePlaceholders, uniqueSyncIds } from "./syncSql";
 
 export type SyncSummary = {
   pushed: number;
   pulled: number;
   conflicts: number;
   errors: number;
+  cashflowChanged: number;
+  lifeFlowChanged: number;
+  pages: number;
 };
 
 type SyncScope = {
@@ -81,7 +90,26 @@ type SyncScope = {
 
 export type SyncOptions = {
   signal?: AbortSignal;
+  generation?: number;
 };
+
+const LOCKED_DB_METHODS = new Set([
+  "execAsync", "getAllAsync", "getEachAsync", "getFirstAsync", "prepareAsync", "runAsync",
+  "withExclusiveTransactionAsync", "withTransactionAsync",
+]);
+
+export function createGenerationScopedDatabase(db: SQLiteDatabase, generation: number): SQLiteDatabase {
+  return new Proxy(db, {
+    get(target, property, receiver) {
+      const value = Reflect.get(target, property, receiver);
+      if (typeof property !== "string" || !LOCKED_DB_METHODS.has(property) || typeof value !== "function") return value;
+      return (...args: unknown[]) => withDbLock(
+        () => Reflect.apply(value, target, args) as Promise<unknown>,
+        generation,
+      );
+    },
+  }) as SQLiteDatabase;
+}
 
 function throwIfCancelled(signal?: AbortSignal) {
   if (!signal?.aborted) return;
@@ -109,30 +137,29 @@ function nowIso() {
 }
 
 async function hardDeleteManagementTree(db: SQLiteDatabase, managementId: string): Promise<void> {
-  await db.withTransactionAsync(async () => {
-    await db.runAsync("DELETE FROM entries WHERE management_id = ?", managementId);
-    await db.runAsync("DELETE FROM recurring_entries WHERE management_id = ?", managementId);
-    await db.runAsync("DELETE FROM quick_fills WHERE management_id = ?", managementId);
-    await db.runAsync("DELETE FROM overall_budgets WHERE management_id = ?", managementId);
-    await db.runAsync("DELETE FROM categories WHERE management_id = ?", managementId);
-    await db.runAsync("DELETE FROM audit_snapshots WHERE management_id = ?", managementId);
-    await db.runAsync("DELETE FROM management_members WHERE management_id = ?", managementId);
-    await db.runAsync("DELETE FROM managements WHERE id = ?", managementId);
+  await db.withExclusiveTransactionAsync(async (txn) => {
+    await txn.runAsync("DELETE FROM entries WHERE management_id = ?", managementId);
+    await txn.runAsync("DELETE FROM recurring_entries WHERE management_id = ?", managementId);
+    await txn.runAsync("DELETE FROM quick_fills WHERE management_id = ?", managementId);
+    await txn.runAsync("DELETE FROM overall_budgets WHERE management_id = ?", managementId);
+    await txn.runAsync("DELETE FROM categories WHERE management_id = ?", managementId);
+    await txn.runAsync("DELETE FROM audit_snapshots WHERE management_id = ?", managementId);
+    await txn.runAsync("DELETE FROM management_members WHERE management_id = ?", managementId);
+    await txn.runAsync("DELETE FROM managements WHERE id = ?", managementId);
   });
 }
 
 // ---------------------------------------------------------------------------
 // Serialized execution — coalesce concurrent callers
 // ---------------------------------------------------------------------------
-// Per-DB-instance coalescing. Foreground sync (via SQLiteProvider) and
-// background sync (via openDatabaseAsync) use distinct DB handles; keeping a
-// single module-level promise would let one DB "borrow" the other's in-flight
-// sync, operating on the wrong connection. Key on the handle instead.
+// Foreground and background handles point at the same database file. Coalesce
+// them process-wide so only the first caller performs network and DB work.
 
-const activeSyncs = new WeakMap<SQLiteDatabase, Promise<SyncSummary>>();
+let activeSync: Promise<SyncSummary> | null = null;
 
 export async function waitForSyncIdleAsync(db: SQLiteDatabase): Promise<void> {
-  const existing = activeSyncs.get(db);
+  void db;
+  const existing = activeSync;
   if (existing) await existing.catch(() => undefined);
 }
 
@@ -423,49 +450,96 @@ async function pushEntries(db: SQLiteDatabase, summary: SyncSummary, scope: Sync
   );
   if (dirty.length === 0) return;
 
+  const prepared: { local: EntryRow; managementId: string; mutation: EntrySyncMutation }[] = [];
   for (const row of dirty) {
-    throwIfCancelled(signal);
     const local = row as unknown as EntryRow;
-    try {
-      if (local.sync_status === "deleted") {
-        if (local.remote_id) {
-          const mgmtRemote = await getManagementRemoteId(db, local.management_id);
-          await deleteEntry(local.remote_id, mgmtRemote ?? undefined, { signal });
-          await hardDeleteById(db, "entries", local.id);
-        } else {
-          await hardDeleteById(db, "entries", local.id);
-        }
+    const managementId = await getManagementRemoteId(db, local.management_id);
+    if (!managementId) continue;
+    if (local.sync_status === "deleted") {
+      if (!local.remote_id) {
+        await hardDeleteById(db, "entries", local.id);
         summary.pushed += 1;
-        continue;
+      } else {
+        prepared.push({ local, managementId, mutation: { mutationId: `${local.id}:${local.updated_at}:deleted`, operation: "delete", entryId: local.remote_id } });
       }
+      continue;
+    }
+    const body = await localEntryToCreate(db, local);
+    if (!body) continue;
+    const category = local.category_id
+      ? await db.getFirstAsync<{ remote_id: string | null }>("SELECT remote_id FROM categories WHERE id = ?", local.category_id)
+      : null;
+    const { category: _category, managementId: _managementId, clientId: _clientId, ...syncData } = body;
+    prepared.push({
+      local,
+      managementId,
+      mutation: {
+        mutationId: `${local.id}:${local.updated_at}:${local.sync_status}`,
+        operation: local.remote_id ? "update" : "create",
+        entryId: local.remote_id ?? undefined,
+        clientId: local.remote_id ? undefined : local.id,
+        data: { ...syncData, categoryId: category?.remote_id ?? null },
+      },
+    });
+  }
 
-      if (local.sync_status === "pending") {
-        const body = await localEntryToCreate(db, local);
-        if (!body) continue;
-        const server = await createEntry(body, { signal });
-        await markSynced(db, "entries", local.id, server.id, server.updatedAt ?? server.createdAt);
-        summary.pushed += 1;
-        continue;
-      }
-
-      if (local.sync_status === "updated") {
-        if (!local.remote_id) {
-          const body = await localEntryToCreate(db, local);
-          if (!body) continue;
-          const server = await createEntry(body, { signal });
-          await markSynced(db, "entries", local.id, server.id, server.updatedAt ?? server.createdAt);
-        } else {
-          const body = await localEntryToUpdate(db, local);
-          if (!body) continue;
-          const server = await updateEntry(local.remote_id, body, { signal });
-          await markSynced(db, "entries", local.id, server.id, server.updatedAt ?? server.createdAt);
+  const byManagement = new Map<string, typeof prepared>();
+  for (const item of prepared) {
+    const items = byManagement.get(item.managementId) ?? [];
+    items.push(item);
+    byManagement.set(item.managementId, items);
+  }
+  for (const managementItems of byManagement.values()) {
+    for (let offset = 0; offset < managementItems.length; offset += 75) {
+      throwIfCancelled(signal);
+      const chunk = managementItems.slice(offset, offset + 75);
+      const batchStarted = performance.now();
+      try {
+        const response = await pushEntrySyncBatch(chunk[0].managementId, chunk.map((item) => item.mutation), { signal });
+        const byMutation = new Map(response.results.map((result) => [result.mutationId, result]));
+        await db.withExclusiveTransactionAsync(async (txn) => {
+          for (const item of chunk) {
+            const result = byMutation.get(item.mutation.mutationId);
+            if (!result?.ok) {
+              summary.errors += 1;
+              continue;
+            }
+            if (item.local.sync_status === "deleted") {
+              const deleted = await txn.runAsync("DELETE FROM entries WHERE id = ? AND updated_at = ? AND sync_status = 'deleted'", item.local.id, item.local.updated_at);
+              if (deleted.changes > 0) summary.pushed += 1;
+            } else {
+              const acknowledged = await txn.runAsync(
+                "UPDATE entries SET sync_status = 'synced', remote_id = ?, last_synced_at = ?, updated_at = ? WHERE id = ? AND updated_at = ? AND sync_status = ?",
+                result.entry.id, result.entry.updatedAt, result.entry.updatedAt, item.local.id, item.local.updated_at, item.local.sync_status,
+              );
+              if (acknowledged.changes > 0) summary.pushed += 1;
+            }
+          }
+        });
+        console.info("[sync] entry push batch", { count: chunk.length, durationMs: Math.round(performance.now() - batchStarted) });
+      } catch (error) {
+        const status = error instanceof ApiError ? error.status : 0;
+        if (status !== 404 && status !== 405) throw error;
+        // Controlled compatibility fallback for servers that predate the batch endpoint.
+        for (const item of chunk) {
+          const { local } = item;
+          try {
+            if (local.sync_status === "deleted") {
+              if (local.remote_id) await deleteEntry(local.remote_id, item.managementId, { signal });
+              await hardDeleteById(db, "entries", local.id);
+            } else {
+              const body = await localEntryToCreate(db, local);
+              if (!body) continue;
+              const server = local.remote_id ? await updateEntry(local.remote_id, body, { signal }) : await createEntry(body, { signal });
+              await db.runAsync("UPDATE entries SET sync_status = 'synced', remote_id = ?, last_synced_at = ?, updated_at = ? WHERE id = ? AND updated_at = ? AND sync_status = ?", server.id, server.updatedAt ?? server.createdAt, server.updatedAt ?? server.createdAt, local.id, local.updated_at, local.sync_status);
+            }
+            summary.pushed += 1;
+          } catch (legacyError) {
+            console.warn("[sync] legacy push entry failed", local.id, legacyError);
+            summary.errors += 1;
+          }
         }
-        summary.pushed += 1;
-        continue;
       }
-    } catch (error) {
-      console.warn("[sync] push entry failed", local.id, error);
-      summary.errors += 1;
     }
   }
 }
@@ -541,13 +615,16 @@ async function pullManagements(db: SQLiteDatabase, summary: SyncSummary, scope: 
   }
 }
 
-async function pullCategories(db: SQLiteDatabase, mgmt: ManagementLite, summary: SyncSummary, signal?: AbortSignal): Promise<void> {
-  let serverList: ServerCategory[];
-  try {
-    serverList = await listCategories(mgmt.remote_id, { signal });
-  } catch (error) {
-    console.warn("[sync] pull categories failed", mgmt.remote_id, error);
-    summary.errors += 1;
+async function pullCategories(db: SQLiteDatabase, mgmt: ManagementLite, summary: SyncSummary, signal?: AbortSignal, serverList?: ServerCategory[] | null): Promise<void> {
+  if (serverList === undefined) {
+    try {
+      serverList = await listCategories(mgmt.remote_id, { signal });
+    } catch (error) {
+      console.warn("[sync] pull categories failed", mgmt.remote_id, error);
+      summary.errors += 1;
+      return;
+    }
+  } else if (serverList === null) {
     return;
   }
 
@@ -587,13 +664,16 @@ async function pullCategories(db: SQLiteDatabase, mgmt: ManagementLite, summary:
   await deleteStaleChildren(db, "categories", mgmt.id, returnedIds, summary, signal);
 }
 
-async function pullQuickFills(db: SQLiteDatabase, mgmt: ManagementLite, summary: SyncSummary, signal?: AbortSignal): Promise<void> {
-  let serverList: ServerQuickFill[];
-  try {
-    serverList = await listQuickFills(mgmt.remote_id, { signal });
-  } catch (error) {
-    console.warn("[sync] pull quick fills failed", mgmt.remote_id, error);
-    summary.errors += 1;
+async function pullQuickFills(db: SQLiteDatabase, mgmt: ManagementLite, summary: SyncSummary, signal?: AbortSignal, serverList?: ServerQuickFill[] | null): Promise<void> {
+  if (serverList === undefined) {
+    try {
+      serverList = await listQuickFills(mgmt.remote_id, { signal });
+    } catch (error) {
+      console.warn("[sync] pull quick fills failed", mgmt.remote_id, error);
+      summary.errors += 1;
+      return;
+    }
+  } else if (serverList === null) {
     return;
   }
 
@@ -631,13 +711,16 @@ async function pullQuickFills(db: SQLiteDatabase, mgmt: ManagementLite, summary:
   await deleteStaleChildren(db, "quick_fills", mgmt.id, returnedIds, summary, signal);
 }
 
-async function pullOverallBudgets(db: SQLiteDatabase, mgmt: ManagementLite, summary: SyncSummary, signal?: AbortSignal): Promise<void> {
-  let serverList: ServerOverallBudget[];
-  try {
-    serverList = await listOverallBudgets(mgmt.remote_id, { signal });
-  } catch (error) {
-    console.warn("[sync] pull overall budgets failed", mgmt.remote_id, error);
-    summary.errors += 1;
+async function pullOverallBudgets(db: SQLiteDatabase, mgmt: ManagementLite, summary: SyncSummary, signal?: AbortSignal, serverList?: ServerOverallBudget[] | null): Promise<void> {
+  if (serverList === undefined) {
+    try {
+      serverList = await listOverallBudgets(mgmt.remote_id, { signal });
+    } catch (error) {
+      console.warn("[sync] pull overall budgets failed", mgmt.remote_id, error);
+      summary.errors += 1;
+      return;
+    }
+  } else if (serverList === null) {
     return;
   }
 
@@ -676,13 +759,16 @@ async function pullOverallBudgets(db: SQLiteDatabase, mgmt: ManagementLite, summ
   await deleteStaleChildren(db, "overall_budgets", mgmt.id, returnedIds, summary, signal);
 }
 
-async function pullRecurringEntries(db: SQLiteDatabase, mgmt: ManagementLite, summary: SyncSummary, signal?: AbortSignal): Promise<void> {
-  let serverList: ServerRecurringEntry[];
-  try {
-    serverList = await listRecurringEntries(mgmt.remote_id, { signal });
-  } catch (error) {
-    console.warn("[sync] pull recurring entries failed", mgmt.remote_id, error);
-    summary.errors += 1;
+async function pullRecurringEntries(db: SQLiteDatabase, mgmt: ManagementLite, summary: SyncSummary, signal?: AbortSignal, serverList?: ServerRecurringEntry[] | null): Promise<void> {
+  if (serverList === undefined) {
+    try {
+      serverList = await listRecurringEntries(mgmt.remote_id, { signal });
+    } catch (error) {
+      console.warn("[sync] pull recurring entries failed", mgmt.remote_id, error);
+      summary.errors += 1;
+      return;
+    }
+  } else if (serverList === null) {
     return;
   }
 
@@ -720,7 +806,7 @@ async function pullRecurringEntries(db: SQLiteDatabase, mgmt: ManagementLite, su
   await deleteStaleChildren(db, "recurring_entries", mgmt.id, returnedIds, summary, signal);
 }
 
-async function pullEntries(db: SQLiteDatabase, mgmt: ManagementLite, summary: SyncSummary, signal?: AbortSignal): Promise<void> {
+async function pullEntriesLegacy(db: SQLiteDatabase, mgmt: ManagementLite, summary: SyncSummary, signal?: AbortSignal): Promise<void> {
   let serverEntries;
   try {
     serverEntries = await listAllEntries({ managementId: mgmt.remote_id }, { signal });
@@ -784,75 +870,250 @@ async function pullEntries(db: SQLiteDatabase, mgmt: ManagementLite, summary: Sy
   }
 }
 
+async function applyEntrySyncPage(
+  db: SQLiteDatabase,
+  mgmt: ManagementLite,
+  records: EntrySyncRecord[],
+  nextCursor: string,
+  bootstrapping: boolean,
+  isFinalPage: boolean,
+  summary: SyncSummary,
+) {
+  await db.withExclusiveTransactionAsync(async (txn) => {
+    const pageRemoteIds = uniqueSyncIds(records.map((record) => record.id));
+    const localRows = pageRemoteIds.length === 0
+      ? []
+      : await txn.getAllAsync<{ id: string; remote_id: string; updated_at: string; sync_status: string }>(
+          `SELECT id, remote_id, updated_at, sync_status FROM entries
+           WHERE management_id = ? AND remote_id IN (${sqlitePlaceholders(pageRemoteIds.length)})`,
+          mgmt.id,
+          ...pageRemoteIds,
+        );
+    const localByRemote = new Map(localRows.map((row) => [row.remote_id, row]));
+    const categoryRemoteIds = uniqueSyncIds(
+      records.filter((record) => !record.deletedAt).map((record) => record.categoryId),
+    );
+    const categories = categoryRemoteIds.length === 0
+      ? []
+      : await txn.getAllAsync<{ id: string; remote_id: string }>(
+          `SELECT id, remote_id FROM categories
+           WHERE management_id = ? AND deleted_at IS NULL AND remote_id IN (${sqlitePlaceholders(categoryRemoteIds.length)})`,
+          mgmt.id,
+          ...categoryRemoteIds,
+        );
+    const categoryByRemote = new Map(categories.map((row) => [row.remote_id, row.id]));
+
+    for (const server of records) {
+      if (bootstrapping) await txn.runAsync("INSERT OR IGNORE INTO entry_sync_seen (management_id, remote_id) VALUES (?, ?)", mgmt.id, server.id);
+      const local = localByRemote.get(server.id);
+      const serverTime = Date.parse(server.updatedAt);
+      const localTime = local ? Date.parse(local.updated_at) : 0;
+      if (local && local.sync_status !== "synced" && localTime >= serverTime) {
+        summary.conflicts += 1;
+        continue;
+      }
+      if (server.deletedAt) {
+        if (local?.sync_status === "synced" || (local && serverTime > localTime)) {
+          const deleted = await txn.runAsync("DELETE FROM entries WHERE id = ?", local.id);
+          summary.pulled += deleted.changes;
+        }
+        continue;
+      }
+      if (!server.io) continue;
+      const values = [
+        server.name, server.nominal, server.originalNominal, server.originalCurrency, server.exchangeRateToIdr,
+        server.exchangeRateAt, server.categoryId ? categoryByRemote.get(server.categoryId) ?? null : null,
+        server.date ?? "", server.io, server.updatedAt, server.updatedAt, server.id,
+      ];
+      if (local) {
+        if (serverTime <= localTime && local.sync_status === "synced") continue;
+        const updated = await txn.runAsync(
+          `UPDATE entries SET name = ?, nominal = ?, original_nominal = ?, original_currency = ?, exchange_rate_to_idr = ?,
+           exchange_rate_at = ?, category_id = ?, date = ?, io = ?, created_by_id = NULL, deleted_at = NULL,
+           sync_status = 'synced', updated_at = ?, last_synced_at = ? WHERE remote_id = ?`,
+          ...values,
+        );
+        summary.pulled += updated.changes;
+      } else {
+        await txn.runAsync(
+          `INSERT INTO entries (id, remote_id, name, nominal, original_nominal, original_currency, exchange_rate_to_idr,
+           exchange_rate_at, category_id, date, io, management_id, created_by_id, is_reconciliation, created_at, updated_at,
+           deleted_at, sync_status, last_synced_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, ?, ?, NULL, 'synced', ?)`,
+          `entry-${server.id}`, server.id, server.name, server.nominal, server.originalNominal, server.originalCurrency,
+          server.exchangeRateToIdr, server.exchangeRateAt, server.categoryId ? categoryByRemote.get(server.categoryId) ?? null : null,
+          server.date ?? "", server.io, mgmt.id, server.createdAt, server.updatedAt, server.updatedAt,
+        );
+        summary.pulled += 1;
+      }
+    }
+
+    await txn.runAsync(
+      "INSERT INTO app_preferences (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      `entry_sync_v1:${mgmt.remote_id}:cursor`, nextCursor,
+    );
+    if (bootstrapping && isFinalPage) {
+      const removed = await txn.runAsync(
+        `DELETE FROM entries WHERE management_id = ? AND remote_id IS NOT NULL AND sync_status = 'synced'
+         AND NOT EXISTS (SELECT 1 FROM entry_sync_seen s WHERE s.management_id = ? AND s.remote_id = entries.remote_id)`,
+        mgmt.id, mgmt.id,
+      );
+      summary.pulled += removed.changes;
+      await txn.runAsync("DELETE FROM entry_sync_seen WHERE management_id = ?", mgmt.id);
+      await txn.runAsync(
+        "INSERT INTO app_preferences (key, value) VALUES (?, '1') ON CONFLICT(key) DO UPDATE SET value = '1'",
+        `entry_sync_v1:${mgmt.remote_id}:bootstrapped`,
+      );
+    }
+  });
+}
+
+async function pullEntries(db: SQLiteDatabase, mgmt: ManagementLite, summary: SyncSummary, signal?: AbortSignal, resetAttempted = false): Promise<void> {
+  let cursor = await getEntrySyncCursor(db, mgmt.remote_id);
+  const bootstrapped = await isEntrySyncBootstrapped(db, mgmt.remote_id);
+  const bootstrapping = !bootstrapped;
+  if (bootstrapping && !cursor) await db.runAsync("DELETE FROM entry_sync_seen WHERE management_id = ?", mgmt.id);
+
+  while (true) {
+    throwIfCancelled(signal);
+    const started = performance.now();
+    try {
+      const page = await getEntrySyncPage(mgmt.remote_id, cursor, { signal });
+      if (!page.nextCursor) return;
+      await applyEntrySyncPage(db, mgmt, page.entries, page.nextCursor, bootstrapping, !page.hasMore, summary);
+      cursor = page.nextCursor;
+      summary.pages += 1;
+      console.info("[sync] entry pull page", { count: page.entries.length, durationMs: Math.round(performance.now() - started) });
+      if (!page.hasMore) return;
+    } catch (error) {
+      const status = error instanceof ApiError ? error.status : 0;
+      if (status === 404 || status === 405) {
+        await pullEntriesLegacy(db, mgmt, summary, signal);
+        return;
+      }
+      if (status === 400 && cursor && !resetAttempted) {
+        await resetEntrySyncCursor(db, mgmt.remote_id);
+        await db.runAsync("DELETE FROM entry_sync_seen WHERE management_id = ?", mgmt.id);
+        return pullEntries(db, mgmt, summary, signal, true);
+      }
+      throw error;
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Orchestration
 // ---------------------------------------------------------------------------
 
 export async function syncNow(db: SQLiteDatabase, options: SyncOptions = {}): Promise<SyncSummary> {
-  const existing = activeSyncs.get(db);
+  const existing = activeSync;
   if (existing) return existing;
 
   const sync = (async () => {
     const { signal } = options;
-    const summary: SyncSummary = { pushed: 0, pulled: 0, conflicts: 0, errors: 0 };
+    const generation = options.generation ?? getDbLockGeneration();
+    const syncDb = createGenerationScopedDatabase(db, generation);
+    const started = performance.now();
+    const summary: SyncSummary = { pushed: 0, pulled: 0, conflicts: 0, errors: 0, cashflowChanged: 0, lifeFlowChanged: 0, pages: 0 };
     throwIfCancelled(signal);
-    const scope = await buildSyncScope(db);
+    const scope = await buildSyncScope(syncDb);
 
-    await pushManagements(db, summary, scope, signal);
+    await pushManagements(syncDb, summary, scope, signal);
     throwIfCancelled(signal);
-    await pushPendingManagementImages(db, summary, signal);
+    await pushPendingManagementImages(syncDb, summary, signal);
     throwIfCancelled(signal);
-    await pushCategories(db, summary, scope, signal);
+    await pushCategories(syncDb, summary, scope, signal);
     throwIfCancelled(signal);
-    await pushQuickFills(db, summary, scope, signal);
+    await pushQuickFills(syncDb, summary, scope, signal);
     throwIfCancelled(signal);
-    await pushOverallBudgets(db, summary, scope, signal);
+    await pushOverallBudgets(syncDb, summary, scope, signal);
     throwIfCancelled(signal);
-    await pushRecurringEntries(db, summary, scope, signal);
+    await pushRecurringEntries(syncDb, summary, scope, signal);
     throwIfCancelled(signal);
-    await pushEntries(db, summary, scope, signal);
-    throwIfCancelled(signal);
-
-    await pullManagements(db, summary, scope, signal);
+    await pushEntries(syncDb, summary, scope, signal);
     throwIfCancelled(signal);
 
-    const localManagements = (await listLocalManagementsWithRemoteId(db)).filter((management) =>
+    await pullManagements(syncDb, summary, scope, signal);
+    throwIfCancelled(signal);
+
+    const localManagements = (await listLocalManagementsWithRemoteId(syncDb)).filter((management) =>
       scope.remoteManagementIds.has(management.remote_id),
     );
     throwIfCancelled(signal);
-    try {
-      const lifeFlow = await reconcileLifeFlow(db, signal);
-      summary.pushed += lifeFlow.pushed;
-      summary.pulled += lifeFlow.pulled;
-    } catch (error) {
-      console.warn("[sync] lifeflow failed", error);
+
+    const lifeFlowTask = (async () => {
+      try {
+        const lifeFlow = await reconcileLifeFlow(syncDb, signal);
+        summary.pushed += lifeFlow.pushed;
+        summary.pulled += lifeFlow.pulled;
+        summary.lifeFlowChanged = lifeFlow.pushed + lifeFlow.pulled;
+      } catch (error) {
+        console.warn("[sync] lifeflow failed", error);
+        summary.errors += 1;
+      }
+    })();
+
+    const prefetchFailed = (label: string, error: unknown) => {
+      console.warn(`[sync] prefetch ${label} failed`, error);
       summary.errors += 1;
-    }
-    for (const mgmt of localManagements) {
+    };
+
+    const preFetched = await Promise.all(
+      localManagements.map(async (mgmt) => {
+        const [categories, quickFills, overallBudgets, recurring] = await Promise.all([
+          listCategories(mgmt.remote_id, { signal }).catch((error) => {
+            if (signal?.aborted) throw error;
+            prefetchFailed("categories", error);
+            return null;
+          }),
+          listQuickFills(mgmt.remote_id, { signal }).catch((error) => {
+            if (signal?.aborted) throw error;
+            prefetchFailed("quick-fills", error);
+            return null;
+          }),
+          listOverallBudgets(mgmt.remote_id, { signal }).catch((error) => {
+            if (signal?.aborted) throw error;
+            prefetchFailed("overall budgets", error);
+            return null;
+          }),
+          listRecurringEntries(mgmt.remote_id, { signal }).catch((error) => {
+            if (signal?.aborted) throw error;
+            prefetchFailed("recurring entries", error);
+            return null;
+          }),
+        ]);
+        return { mgmt, categories, quickFills, overallBudgets, recurring };
+      }),
+    );
+    await lifeFlowTask;
+    throwIfCancelled(signal);
+
+    for (const { mgmt, categories, quickFills, overallBudgets, recurring } of preFetched) {
       throwIfCancelled(signal);
-      await pullCategories(db, mgmt, summary, signal);
+      await pullCategories(syncDb, mgmt, summary, signal, categories);
       throwIfCancelled(signal);
-      await pullQuickFills(db, mgmt, summary, signal);
+      await pullQuickFills(syncDb, mgmt, summary, signal, quickFills);
       throwIfCancelled(signal);
-      await pullOverallBudgets(db, mgmt, summary, signal);
+      await pullOverallBudgets(syncDb, mgmt, summary, signal, overallBudgets);
       throwIfCancelled(signal);
-      await pullRecurringEntries(db, mgmt, summary, signal);
+      await pullRecurringEntries(syncDb, mgmt, summary, signal, recurring);
     }
 
     for (const mgmt of localManagements) {
       throwIfCancelled(signal);
-      await pullEntries(db, mgmt, summary, signal);
+      await pullEntries(syncDb, mgmt, summary, signal);
     }
 
     throwIfCancelled(signal);
-    await setLastPulledAt(db, nowIso());
+    if (summary.errors === 0) await setLastPulledAt(syncDb, nowIso());
+    summary.cashflowChanged = Math.max(0, summary.pulled - summary.lifeFlowChanged);
+    console.info("[sync] complete", { pushed: summary.pushed, pulled: summary.pulled, conflicts: summary.conflicts, errors: summary.errors, pages: summary.pages, durationMs: Math.round(performance.now() - started) });
     return summary;
   })();
 
-  activeSyncs.set(db, sync);
+  activeSync = sync;
   try {
     return await sync;
   } finally {
-    activeSyncs.delete(db);
+    if (activeSync === sync) activeSync = null;
   }
 }

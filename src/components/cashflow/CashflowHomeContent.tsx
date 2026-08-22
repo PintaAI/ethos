@@ -5,7 +5,7 @@ import { ActivityHeatmap, type ActivityOverview } from "@/components/cashflow/Ac
 import { CashflowStatsCard, type CashflowStats } from "@/components/cashflow/CashflowStatsCard";
 import { CashflowTable, type CashflowEntry } from "@/components/cashflow/CashflowTable";
 import { useAppTheme } from "@/components/provider/AppTheme";
-import { useSyncStatus } from "@/components/provider/SyncProvider";
+import { useSyncRefresh } from "@/lib/sync/useSyncRefresh";
 
 type CashflowHomeContentProps = {
   entries: CashflowEntry[];
@@ -27,7 +27,7 @@ export function CashflowHomeContent({
   onDateFilterChange,
 }: CashflowHomeContentProps) {
   const appTheme = useAppTheme();
-  const sync = useSyncStatus();
+  const { refreshing, onRefresh } = useSyncRefresh();
 
   const dayEntries = useMemo(
     () => entries.filter((entry) => entry.date === selectedDate),
@@ -55,8 +55,8 @@ export function CashflowHomeContent({
         ListHeaderComponent={homeHeader}
         refreshControl={
           <RefreshControl
-            refreshing={sync.status === "syncing"}
-            onRefresh={() => void sync.syncNow()}
+            refreshing={refreshing}
+            onRefresh={onRefresh}
             tintColor={appTheme.colors.primary}
             colors={[appTheme.colors.primary]}
             progressBackgroundColor={appTheme.colors.background}

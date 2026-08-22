@@ -16,6 +16,7 @@ type CurrencyContextValue = {
   rates: Record<string, number>;
   rate: number;
   isIdr: boolean;
+  recentCurrencies: string[];
   compactAmountsEnabled: boolean;
   cashflowAmountsVisible: boolean;
   cashflowStatsPeriod: CashflowStatsPeriod;
@@ -48,7 +49,8 @@ const DEFAULT_RATES_FROM_IDR: Record<string, number> = {
 };
 
 export function CurrencyProvider({ children }: { children: ReactNode }) {
-  const [currency, setCurrency] = useState("IDR");
+  const [currency, setCurrencyState] = useState("IDR");
+  const [recentCurrencies, setRecentCurrencies] = useState<string[]>([]);
   const [rates, setRates] = useState<Record<string, number>>(DEFAULT_RATES_FROM_IDR);
   const [compactAmountsEnabled, setCompactAmountsEnabled] = useState(true);
   const [cashflowAmountsVisible, setCashflowAmountsVisible] = useState(true);
@@ -59,15 +61,17 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
 
     async function load() {
-      const [storedCurrency, storedRates, storedCompactAmounts, storedAmountsVisible, storedStatsPeriod] = await Promise.all([
+      const [storedCurrency, storedRecents, storedRates, storedCompactAmounts, storedAmountsVisible, storedStatsPeriod] = await Promise.all([
         getPreference("currency"),
+        getPreference("recentCurrencies"),
         getPreference("exchangeRates"),
         getPreference("cashflowCompactAmounts"),
         getPreference("cashflowAmountsVisible"),
         getPreference("cashflowStatsPeriod"),
       ]);
       if (cancelled) return;
-      setCurrency(storedCurrency);
+      setCurrencyState(storedCurrency);
+      setRecentCurrencies(storedRecents);
       setCompactAmountsEnabled(storedCompactAmounts);
       setCashflowAmountsVisible(storedAmountsVisible);
       setCashflowStatsPeriod(storedStatsPeriod);
@@ -79,7 +83,7 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
           getExchangeRates(),
         ]);
         if (cancelled) return;
-        setCurrency(serverCurrency);
+        setCurrencyState(serverCurrency);
         setRates({ ...DEFAULT_RATES_FROM_IDR, ...serverRates });
         await Promise.all([
           setPreference("currency", serverCurrency),
@@ -105,6 +109,7 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
       rates,
       rate,
       isIdr: currency === "IDR",
+      recentCurrencies,
       compactAmountsEnabled,
       cashflowAmountsVisible,
       cashflowStatsPeriod,
@@ -118,9 +123,14 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
       toIdr: (displayAmount) => convertToIdr(displayAmount, currency, rate),
       toDisplay: (amountIdr) => convertFromIdr(amountIdr, currency, rate),
       setCurrency: (code) => {
-        setCurrency(code);
+        setCurrencyState(code);
         setPreference("currency", code).catch(() => {});
         updateUserCurrency(code).catch(() => {});
+        setRecentCurrencies((prev) => {
+          const next = [code, ...prev.filter((item) => item !== code)].slice(0, 3);
+          setPreference("recentCurrencies", next).catch(() => {});
+          return next;
+        });
       },
       setCompactAmountsEnabled: (enabled) => {
         setCompactAmountsEnabled(enabled);
@@ -136,7 +146,7 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
       },
       denominations: getDenominations(currency),
     };
-  }, [cashflowAmountsVisible, cashflowStatsPeriod, compactAmountsEnabled, currency, rate, rates]);
+  }, [cashflowAmountsVisible, cashflowStatsPeriod, compactAmountsEnabled, currency, rate, rates, recentCurrencies]);
 
   return <CurrencyContext.Provider value={value}>{children}</CurrencyContext.Provider>;
 }

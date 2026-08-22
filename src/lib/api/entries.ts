@@ -1,5 +1,5 @@
 import { apiDelete, apiGet, apiPatch, apiPost } from "./client";
-import type { CreateEntryBody, EntriesListResponse, ServerEntry, UpdateEntryBody } from "./types";
+import type { CreateEntryBody, EntriesListResponse, EntrySyncMutation, EntrySyncMutationResult, EntrySyncPage, ServerEntry, UpdateEntryBody } from "./types";
 
 export type ListEntriesParams = {
   managementId?: string;
@@ -63,4 +63,14 @@ export function updateEntry(id: string, body: UpdateEntryBody, init: RequestInit
 export function deleteEntry(id: string, managementId?: string, init: RequestInit = {}): Promise<void> {
   const qs = managementId ? `?management_id=${encodeURIComponent(managementId)}` : "";
   return apiDelete(`/entries/${encodeURIComponent(id)}${qs}`, init);
+}
+
+export function getEntrySyncPage(managementId: string, cursor?: string | null, init: RequestInit = {}): Promise<EntrySyncPage> {
+  const query = [`management_id=${encodeURIComponent(managementId)}`];
+  if (cursor) query.push(`cursor=${encodeURIComponent(cursor)}`);
+  return apiGet<EntrySyncPage>(`/entries/sync?${query.join("&")}`, init);
+}
+
+export function pushEntrySyncBatch(managementId: string, mutations: EntrySyncMutation[], init: RequestInit = {}) {
+  return apiPost<{ results: EntrySyncMutationResult[] }>("/entries/sync", { managementId, mutations }, init);
 }

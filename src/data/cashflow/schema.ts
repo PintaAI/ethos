@@ -5,7 +5,7 @@ import { migrateUnifiedLifeFlow } from "./lifeflowUnifiedMigration";
 import { migratePersonalLifeFlow } from "./lifeflowPersonalMigration";
 import { toDateKey } from "@/lib/date";
 
-const DATABASE_VERSION = 25;
+const DATABASE_VERSION = 26;
 
 async function hasColumn(db: SQLiteDatabase, table: string, column: string) {
   const columns = await db.getAllAsync<{ name: string }>(`PRAGMA table_info(${table})`);
@@ -675,6 +675,35 @@ export async function migrateCashflowDatabase(db: SQLiteDatabase) {
   if (currentVersion < 25) {
     await migratePersonalLifeFlow(db);
     currentVersion = 25;
+  }
+
+  if (currentVersion < 26) {
+    await db.withExclusiveTransactionAsync(async (txn) => {
+      await txn.execAsync(`
+        DELETE FROM entries
+        WHERE remote_id IS NOT NULL
+          AND rowid NOT IN (
+            SELECT CASE
+              WHEN SUM(CASE WHEN sync_status != 'synced' THEN 1 ELSE 0 END) > 0
+                THEN MAX(CASE WHEN sync_status != 'synced' THEN rowid END)
+              ELSE MAX(rowid)
+            END
+            FROM entries WHERE remote_id IS NOT NULL GROUP BY remote_id
+          );
+        CREATE UNIQUE INDEX IF NOT EXISTS entries_remote_id_unique_idx
+          ON entries(remote_id) WHERE remote_id IS NOT NULL;
+        CREATE INDEX IF NOT EXISTS entries_sync_management_updated_idx
+          ON entries(sync_status, management_id, updated_at);
+        CREATE INDEX IF NOT EXISTS entries_management_remote_idx
+          ON entries(management_id, remote_id);
+        CREATE TABLE IF NOT EXISTS entry_sync_seen (
+          management_id TEXT NOT NULL,
+          remote_id TEXT NOT NULL,
+          PRIMARY KEY (management_id, remote_id)
+        );
+      `);
+    });
+    currentVersion = 26;
   }
 
   await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);

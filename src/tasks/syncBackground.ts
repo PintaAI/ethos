@@ -28,23 +28,24 @@ async function runSyncBackgroundAsync() {
     if (!(await getPreference("cloudSyncEnabled")) || !authClient.getCookie()) {
       return BackgroundTask.BackgroundTaskResult.Success;
     }
-    return await withDbLock(async () => {
-      let db: SQLiteDatabase | null = null;
-      try {
-        db = await openDatabaseAsync(DATABASE_NAME);
-        await migrateCashflowDatabase(db);
-        if (expired) return BackgroundTask.BackgroundTaskResult.Failed;
-        const summary = await syncNow(db, { signal: abortController.signal });
-        return !expired && summary.errors === 0
-          ? BackgroundTask.BackgroundTaskResult.Success
-          : BackgroundTask.BackgroundTaskResult.Failed;
-      } catch (error) {
-        console.error("[sync-background] failed", error);
-        return BackgroundTask.BackgroundTaskResult.Failed;
-      } finally {
-        if (db) await db.closeAsync().catch(() => undefined);
-      }
-    }, lockGeneration);
+    let db: SQLiteDatabase | null = null;
+    try {
+      db = await withDbLock(async () => {
+        const opened = await openDatabaseAsync(DATABASE_NAME);
+        await migrateCashflowDatabase(opened);
+        return opened;
+      }, lockGeneration);
+      if (expired) return BackgroundTask.BackgroundTaskResult.Failed;
+      const summary = await syncNow(db, { signal: abortController.signal, generation: lockGeneration });
+      return !expired && summary.errors === 0
+        ? BackgroundTask.BackgroundTaskResult.Success
+        : BackgroundTask.BackgroundTaskResult.Failed;
+    } catch (error) {
+      console.error("[sync-background] failed", error);
+      return BackgroundTask.BackgroundTaskResult.Failed;
+    } finally {
+      if (db) await withDbLock(() => db!.closeAsync()).catch(() => undefined);
+    }
   } catch (error) {
     console.error("[sync-background] failed to queue", error);
     return BackgroundTask.BackgroundTaskResult.Failed;

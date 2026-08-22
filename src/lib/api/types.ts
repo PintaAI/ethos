@@ -135,3 +135,27 @@ export type CreateEntryBody = {
 };
 
 export type UpdateEntryBody = Partial<CreateEntryBody>;
+
+export type EntrySyncRecord = Omit<ServerEntry, "category"> & {
+  categoryId: string | null;
+  deletedAt: string | null;
+  updatedAt: string;
+};
+
+export type EntrySyncPage = {
+  entries: EntrySyncRecord[];
+  nextCursor: string | null;
+  hasMore: boolean;
+};
+
+export type EntrySyncMutation = {
+  mutationId: string;
+  operation: "create" | "update" | "delete";
+  entryId?: string;
+  clientId?: string;
+  data?: Omit<CreateEntryBody, "clientId" | "managementId" | "category"> & { categoryId?: string | null };
+};
+
+export type EntrySyncMutationResult =
+  | { mutationId: string; ok: true; entry: EntrySyncRecord }
+  | { mutationId: string; ok: false; error: string };

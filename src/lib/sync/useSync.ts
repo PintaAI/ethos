@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { InteractionManager } from "react-native";
 import { useSQLiteContext } from "expo-sqlite";
 import { useAuth } from "@/components/provider/AuthProvider";
 import { useCashflowData } from "@/data/cashflow/CashflowDataProvider";
 import { useLifeFlow } from "@/data/lifeflow/LifeFlowProvider";
 import { getPreference, setPreference } from "@/lib/preferences";
 import { syncNow } from "./syncEngine";
+import { getLastPulledAt } from "./syncStatus";
+import { isAutomaticSyncStale, syncRefreshDecision } from "./syncPolicy";
 import { DbOperationInvalidatedError, getDbLockGeneration, withDbLock } from "./dbLock";
 import { reconcileSyncBackgroundTaskAsync } from "@/tasks/syncBackground";
 
@@ -46,8 +49,13 @@ export function useSync(): SyncHook {
     setStatus("syncing");
     const generation = getDbLockGeneration();
     try {
-      const summary = await withDbLock(() => syncNow(db), generation);
-      await Promise.all([refresh(), refreshLifeFlow()]);
+      const summary = await syncNow(db, { generation });
+      if (generation !== getDbLockGeneration()) throw new DbOperationInvalidatedError();
+      const refreshDecision = syncRefreshDecision(summary);
+      await Promise.all([
+        refreshDecision.cashflow ? refresh() : Promise.resolve(),
+        refreshDecision.lifeFlow ? refreshLifeFlow() : Promise.resolve(),
+      ]);
       const completedAt = new Date();
       if (summary.errors > 0) {
         console.warn(`[sync] completed with ${summary.errors} error(s)`);
@@ -79,9 +87,22 @@ export function useSync(): SyncHook {
 
   useEffect(() => {
     if (!isAuthenticated || isPending || cloudSyncEnabled !== true) return;
-    const initialSync = setTimeout(() => void runSync(), 0);
-    return () => clearTimeout(initialSync);
-  }, [cloudSyncEnabled, isAuthenticated, isPending, runSync]);
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const interaction = InteractionManager.runAfterInteractions(() => {
+      timer = setTimeout(() => {
+        void withDbLock(() => getLastPulledAt(db)).then((lastPulledAt) => {
+          if (cancelled) return;
+          if (isAutomaticSyncStale(lastPulledAt)) void runSync();
+        }).catch((error) => console.warn("[sync] freshness check failed", error));
+      }, 250);
+    });
+    return () => {
+      cancelled = true;
+      interaction.cancel();
+      if (timer) clearTimeout(timer);
+    };
+  }, [cloudSyncEnabled, db, isAuthenticated, isPending, runSync]);
 
   return {
     status,

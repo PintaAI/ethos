@@ -67,6 +67,31 @@ export async function setLastPulledAt(db: SQLiteDatabase, iso: string): Promise<
   );
 }
 
+function entryCursorKey(remoteManagementId: string, suffix: "cursor" | "bootstrapped") {
+  return `entry_sync_v1:${remoteManagementId}:${suffix}`;
+}
+
+export async function getEntrySyncCursor(db: SQLiteDatabase, remoteManagementId: string): Promise<string | null> {
+  const row = await db.getFirstAsync<{ value: string }>("SELECT value FROM app_preferences WHERE key = ?", entryCursorKey(remoteManagementId, "cursor"));
+  return row?.value ?? null;
+}
+
+export async function isEntrySyncBootstrapped(db: SQLiteDatabase, remoteManagementId: string): Promise<boolean> {
+  const row = await db.getFirstAsync<{ value: string }>("SELECT value FROM app_preferences WHERE key = ?", entryCursorKey(remoteManagementId, "bootstrapped"));
+  return row?.value === "1";
+}
+
+export async function resetEntrySyncCursor(db: SQLiteDatabase, remoteManagementId: string): Promise<void> {
+  await db.runAsync("DELETE FROM app_preferences WHERE key IN (?, ?)", entryCursorKey(remoteManagementId, "cursor"), entryCursorKey(remoteManagementId, "bootstrapped"));
+}
+
+export async function setEntrySyncCursor(db: SQLiteDatabase, remoteManagementId: string, cursor: string, bootstrapped = false): Promise<void> {
+  await db.runAsync(
+    "INSERT INTO app_preferences (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    entryCursorKey(remoteManagementId, bootstrapped ? "bootstrapped" : "cursor"), bootstrapped ? "1" : cursor,
+  );
+}
+
 type SQLiteBindValue = string | number | null | boolean | Uint8Array | ArrayBuffer;
 
 export type UpsertFields = Record<string, SQLiteBindValue>;

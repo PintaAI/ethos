@@ -27,6 +27,7 @@ export type CashflowEntry = {
   originalCurrency: string | null;
   exchangeRateToIdr: number | null;
   exchangeRateAt: string | null;
+  categoryId?: string | null;
   category: string | null;
   categoryColor: string | null;
   categoryIcon: string | null;

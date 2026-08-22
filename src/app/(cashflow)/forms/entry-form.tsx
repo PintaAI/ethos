@@ -13,6 +13,8 @@ import { useTranslation } from "react-i18next";
 import i18n from "@/i18n";
 import { useAppTheme } from "@/components/provider/AppTheme";
 import { CashflowAmountInput, QuickAmountStrip } from "@/components/cashflow/AmountEntryControls";
+import { CurrencySelector } from "@/components/cashflow/CurrencySelector";
+import { RecentCurrenciesRow } from "@/components/cashflow/currencySelectorShared";
 import { CategorySlider } from "@/components/cashflow/CategorySlider";
 import { loadCategorySliderFeedback, playCategorySliderFeedback } from "@/components/cashflow/categorySliderFeedback";
 import { useCashflowCategorySlider } from "@/components/cashflow/useCashflowCategorySlider";
@@ -26,6 +28,7 @@ import { useSQLiteContext } from "expo-sqlite";
 import { alpha } from "@/lib/color";
 import { toDateKey, parseDateKey } from "@/lib/date";
 import { useIslandToast } from "@/components/provider/IslandToast";
+import { maybePromptForAppStoreReview } from "@/lib/appStoreReview";
 
 function FormSymbol({ name, color, size = 16 }: { name: SFSymbol; color: string; size?: number }) {
   return <AppSymbol name={name} size={size} tintColor={color} fallback={<Text style={{ color }}>•</Text>} />;
@@ -188,6 +191,7 @@ export default function EntryForm() {
   const [suggestedFromHistory, setSuggestedFromHistory] = useState(false);
   const automaticOverrideBlockedRef = useRef(isEditing || Boolean(sharedDraft && draftCategory));
   const initializedEditingEntryRef = useRef<string | null>(null);
+  const editingCategoryTouchedRef = useRef(false);
   const appliedShareDraftRef = useRef<string | null>(null);
   const appliedShareCategoryRef = useRef<string | null>(null);
   const { width: screenWidth } = useWindowDimensions();
@@ -257,7 +261,6 @@ export default function EntryForm() {
   useEffect(() => {
     if (
       !editingEntry ||
-      categoryOptions.length === 0 ||
       initializedEditingEntryRef.current === editingEntry.id
     ) return;
     let cancelled = false;
@@ -279,19 +282,29 @@ export default function EntryForm() {
       setDateIndex(dateSelection.dateIndex);
       setCustomDate(dateSelection.customDate);
 
-      if (editingEntry.category) {
-        const normalizedCategory = editingEntry.category.trim().toLowerCase();
-        const idx = categoryOptions.findIndex((c) => c.name.trim().toLowerCase() === normalizedCategory);
-        if (idx >= 0) {
-          requestAnimationFrame(() => restoreCategoryIndex(idx, false));
-        }
-      }
     });
 
     return () => {
       cancelled = true;
     };
-  }, [currency, editingEntry, categoryOptions, restoreCategoryIndex]);
+  }, [currency, editingEntry]);
+
+  useEffect(() => {
+    if (!editingEntry || categoryOptions.length === 0 || editingCategoryTouchedRef.current) return;
+
+    const normalizedCategory = editingEntry.category?.trim().toLowerCase();
+    const index = editingEntry.categoryId
+      ? categoryOptions.findIndex((category) => category.id === editingEntry.categoryId)
+      : normalizedCategory
+        ? categoryOptions.findIndex((category) => category.name.trim().toLowerCase() === normalizedCategory)
+        : -1;
+    if (index < 0 || selectedCategory?.id === categoryOptions[index]?.id) return;
+
+    const frame = requestAnimationFrame(() => {
+      if (!editingCategoryTouchedRef.current) restoreCategoryIndex(index, false);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [categoryOptions, editingEntry, restoreCategoryIndex, selectedCategory?.id]);
 
   useEffect(() => {
     if (isEditing || !date) return;
@@ -345,6 +358,7 @@ export default function EntryForm() {
 
   const clearForm = () => {
     if (editingEntry) {
+      editingCategoryTouchedRef.current = false;
       const displayNominal = editingEntry.originalCurrency === currency.currency && editingEntry.originalNominal !== null
         ? editingEntry.originalNominal
         : currency.toDisplay(editingEntry.nominal);
@@ -434,6 +448,16 @@ export default function EntryForm() {
       });
       clearForm();
       router.back();
+      if (!isEditing) {
+        setTimeout(() => {
+          void maybePromptForAppStoreReview({
+            title: t("appReview.title"),
+            message: t("appReview.message"),
+            later: t("appReview.later"),
+            review: t("appReview.review"),
+          }).catch((error) => console.warn("Failed to prepare App Store review prompt", error));
+        }, 600);
+      }
     } catch (error) {
       Alert.alert(t("entry.amountRequiredTitle"), error instanceof Error ? error.message : t("entry.amountRequiredMessage"));
     } finally {
@@ -520,8 +544,14 @@ export default function EntryForm() {
         ) : null}
         <View className="items-center gap-2 pb-1">
           <View className="h-28 w-full items-center justify-center">
-            <CashflowAmountInput amountText={amountText} currencySymbol={currency.option.symbol} onAmountTextChange={setAmountText} />
+            <CashflowAmountInput
+              amountText={amountText}
+              currencySymbol={currency.option.symbol}
+              currencyControl={<CurrencySelector amountPrefix amountEmpty={!amountText} />}
+              onAmountTextChange={setAmountText}
+            />
           </View>
+          <RecentCurrenciesRow currency={currency.currency} recentCurrencies={currency.recentCurrencies} onSelect={currency.setCurrency} />
           {Platform.OS === "ios" ? (
             <GlassBox
               isInteractive
@@ -593,6 +623,7 @@ export default function EntryForm() {
               onChangeIndex={handleCategoryChange}
               onUserInteraction={() => {
                 automaticOverrideBlockedRef.current = true;
+                editingCategoryTouchedRef.current = true;
                 setSuggestedFromHistory(false);
               }}
               showAddButton

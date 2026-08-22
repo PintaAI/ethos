@@ -348,6 +348,10 @@ const id = {
       spendingToday: "Spending apa hari ini?",
     },
   },
+  currencyPicker: {
+    title: "Pilih mata uang",
+    base: "Mata uang dasar",
+  },
   quickFill: {
     title: "Quick Fill",
     description: "Simpan label, jumlah, dan kategori pengeluaran sering untuk Quick Fill di form entry.",
@@ -877,6 +881,12 @@ const id = {
   imageUpload: {
     tooLarge: "Pilih gambar berukuran kurang dari 5 MB.",
     unsupportedType: "Pilih gambar JPEG, PNG, WebP, atau GIF. HEIC dan HEIF tidak didukung.",
+  },
+  appReview: {
+    title: "Suka menggunakan Ethos?",
+    message: "Ulasan singkat di App Store membantu lebih banyak orang menemukan Ethos.",
+    later: "Nanti saja",
+    review: "Beri ulasan",
   },
   walletSetup: {
     title: "Setup Wallet", heading: "Jadikan Cashflow milikmu", description: "Siapkan wallet pertamamu.",

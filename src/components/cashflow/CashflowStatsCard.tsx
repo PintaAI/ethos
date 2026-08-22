@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Animated, Easing, Pressable, View } from "react-native";
+import { ActivityIndicator, Animated, Easing, Pressable, View } from "react-native";
 import { SymbolView, type AndroidSymbol, type SFSymbol } from "expo-symbols";
 import { router } from "expo-router";
 import { useTranslation } from "react-i18next";
@@ -136,7 +136,8 @@ export function CashflowStatsCard({ stats, hideMoreButton = false, managementNam
   const detailBackground = appTheme.isDark ? "rgba(255,255,255,0.045)" : "rgba(15,23,42,0.035)";
   const mutedLine = appTheme.isDark ? "rgba(255,255,255,0.12)" : "rgba(15,23,42,0.1)";
   const skeletonColor = appTheme.isDark ? "rgba(255,255,255,0.16)" : "rgba(15,23,42,0.12)";
-  const isLoading = loading || sync.status === "syncing";
+  const isLoading = loading;
+  const isSyncing = sync.status === "syncing";
   const statsPeriods = ["daily", "weekly", "monthly", "allTime"] as const;
   const periodStats = statsPeriod === "daily"
     ? stats.currentDay
@@ -180,6 +181,14 @@ export function CashflowStatsCard({ stats, hideMoreButton = false, managementNam
             )}
             <StatSymbol name="chevron.down" color={appTheme.colors.muted} />
           </Pressable>
+          {isSyncing && !isLoading ? (
+            <ActivityIndicator
+              size="small"
+              color={appTheme.colors.muted}
+              accessibilityLabel="Syncing cashflow"
+              style={{ transform: [{ scale: 0.7 }] }}
+            />
+          ) : null}
           <Pressable
             onPress={() => router.push("/forms/audit")}
             accessibilityRole="button"
