@@ -5,7 +5,7 @@ import { authBaseURL, authClient } from "@/lib/auth-client";
 export const apiBaseURL = `${authBaseURL}/api/v1`;
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string) {
+  constructor(public status: number, message: string, public retryAfterMs?: number) {
     super(message);
     this.name = "ApiError";
   }
@@ -55,7 +55,12 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
         json = {};
       }
     }
-    if (!res.ok) throw new ApiError(res.status, json.error ?? res.statusText);
+    if (!res.ok) {
+      const header = res.headers.get("Retry-After");
+      const seconds = header == null ? NaN : Number(header);
+      const delay = Number.isFinite(seconds) ? seconds * 1000 : header ? Date.parse(header) - Date.now() : NaN;
+      throw new ApiError(res.status, json.error ?? res.statusText, Number.isFinite(delay) ? Math.max(0, delay) : undefined);
+    }
     return json.data as T;
   } catch (error) {
     if (didTimeout) {

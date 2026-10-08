@@ -4,6 +4,7 @@ import test from "node:test";
 import { Database } from "bun:sqlite";
 import {
   canonicalizeSystemItemsForSync,
+  ensureAppCheckInItem,
   recordUnifiedJournalActivity,
   setJournalItemEnabled,
 } from "./unifiedRepository.ts";
@@ -45,6 +46,8 @@ function createDatabase() {
       starts_on TEXT NOT NULL,
       start_time TEXT,
       end_time TEXT,
+      notify_start INTEGER NOT NULL DEFAULT 1,
+      notify_end INTEGER NOT NULL DEFAULT 1,
       break_durations_json TEXT NOT NULL,
       recurrence_frequency TEXT,
       recurrence_interval INTEGER NOT NULL,
@@ -127,5 +130,27 @@ test("system Items use a stable personal identity", async () => {
   });
   assert.equal(sqlite.query("SELECT count(*) AS count FROM lifeflow_tombstones").get().count, 0);
 
+  // Canonical rows must not be rewritten by every sync. Preserve notification
+  // preferences too; they do not change the system Item's identity.
+  for (const enabled of [1, 0]) {
+    sqlite.query("UPDATE items SET notify_start = ?, notify_end = ?").run(enabled, enabled);
+    const before = sqlite.query("SELECT total_changes() AS count").get().count;
+    await canonicalizeSystemItemsForSync(db as never);
+    assert.equal(sqlite.query("SELECT total_changes() AS count").get().count, before);
+  }
+
   sqlite.close();
+});
+
+test("refreshing a daily app check-in preserves its first completion without another write", async () => {
+  const sqlite = createDatabase();
+  try {
+    const db = port(sqlite);
+    assert.equal(await ensureAppCheckInItem(db as never, "2026-10-02"), true);
+    const before = sqlite.query("SELECT total_changes() AS count").get().count;
+    assert.equal(await ensureAppCheckInItem(db as never, "2026-10-02"), false);
+    assert.equal(sqlite.query("SELECT total_changes() AS count").get().count, before);
+    assert.equal(await ensureAppCheckInItem(db as never, "2026-10-03"), true);
+    assert.equal(sqlite.query("SELECT count(*) AS count FROM habit_logs").get().count, 2);
+  } finally { sqlite.close(); }
 });

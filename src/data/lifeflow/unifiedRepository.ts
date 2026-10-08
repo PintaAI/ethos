@@ -16,6 +16,7 @@ import type {
 type ItemRow = {
   id: string; kind: Item["kind"]; name: string; color: string; starts_on: string;
   start_time: string | null; end_time: string | null; break_durations_json: string;
+  notify_start: number; notify_end: number;
   recurrence_frequency: Recurrence["frequency"] | null; recurrence_interval: number;
   recurrence_weekdays_json: string; recurrence_ends_on: string | null; system_type: SystemItemType | null;
   created_at: string; updated_at: string;
@@ -49,6 +50,8 @@ function mapItem(row: ItemRow): Item {
     startsOn: row.starts_on,
     startTime: row.start_time,
     endTime: row.end_time,
+    notifyStart: row.notify_start !== 0,
+    notifyEnd: row.notify_end !== 0,
     breakDurations: parseArray<number>(row.break_durations_json),
     recurrence: row.recurrence_frequency ? {
       frequency: row.recurrence_frequency,
@@ -107,9 +110,9 @@ async function insertCanonicalSystemItem(
   updatedAt: string,
 ) {
   await db.runAsync(
-    `INSERT INTO items (id, kind, name, color, starts_on, start_time, end_time,
+    `INSERT INTO items (id, kind, name, color, starts_on, start_time, end_time, notify_start, notify_end,
       break_durations_json, recurrence_frequency, recurrence_interval, recurrence_weekdays_json, recurrence_ends_on,
-      system_type, created_at, updated_at) VALUES (?, 'habit', ?, ?, ?, NULL, NULL, '[]', 'daily', 1, '[]', NULL, ?, ?, ?)`,
+      system_type, created_at, updated_at) VALUES (?, 'habit', ?, ?, ?, NULL, NULL, 1, 1, '[]', 'daily', 1, '[]', NULL, ?, ?, ?)`,
     id,
     SYSTEM_ITEMS[type].name,
     SYSTEM_ITEMS[type].color,
@@ -244,10 +247,11 @@ export async function createItem(db: SQLiteDatabase, input: CreateItemInput): Pr
 
 async function insertItem(db: SQLiteDatabase, item: Item) {
   await db.runAsync(
-    `INSERT INTO items (id, kind, name, color, starts_on, start_time, end_time, break_durations_json,
+    `INSERT INTO items (id, kind, name, color, starts_on, start_time, end_time, notify_start, notify_end, break_durations_json,
       recurrence_frequency, recurrence_interval, recurrence_weekdays_json, recurrence_ends_on, system_type, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     item.id, item.kind, item.name.trim(), item.color, item.startsOn, item.startTime, item.endTime,
+    item.notifyStart === false ? 0 : 1, item.notifyEnd === false ? 0 : 1,
     JSON.stringify(item.breakDurations), item.recurrence?.frequency ?? null, item.recurrence?.interval ?? 1,
     JSON.stringify(item.recurrence?.weekdays ?? []), item.recurrence?.endsOn ?? null, item.systemType, item.createdAt, item.updatedAt,
   );
@@ -272,10 +276,11 @@ export async function updateItem(db: SQLiteDatabase, id: string, input: UpdateIt
       await txn.runAsync("DELETE FROM item_exceptions WHERE item_id = ?", id);
     }
     await txn.runAsync(
-      `UPDATE items SET name = ?, color = ?, starts_on = ?, start_time = ?, end_time = ?, break_durations_json = ?,
+      `UPDATE items SET name = ?, color = ?, starts_on = ?, start_time = ?, end_time = ?, notify_start = ?, notify_end = ?, break_durations_json = ?,
        recurrence_frequency = ?, recurrence_interval = ?, recurrence_weekdays_json = ?, recurrence_ends_on = ?, updated_at = ?
        WHERE id = ?`,
-      next.name.trim(), next.color, next.startsOn, next.startTime, next.endTime, JSON.stringify(next.breakDurations),
+      next.name.trim(), next.color, next.startsOn, next.startTime, next.endTime,
+      next.notifyStart === false ? 0 : 1, next.notifyEnd === false ? 0 : 1, JSON.stringify(next.breakDurations),
       next.recurrence?.frequency ?? null, next.recurrence?.interval ?? 1, JSON.stringify(next.recurrence?.weekdays ?? []),
       next.recurrence?.endsOn ?? null, new Date().toISOString(), id,
     );
@@ -357,7 +362,9 @@ export async function ensureSystemItem(db: SQLiteDatabase, type: SystemItemType)
 
 export async function ensureAppCheckInItem(db: SQLiteDatabase, date: string) {
   const id = await ensureSystemItem(db, "app_check_in");
+  if (await db.getFirstAsync("SELECT 1 FROM habit_logs WHERE item_id = ? AND date = ?", id, date)) return false;
   await setUnifiedHabitCompleted(db, id, date, true, true);
+  return true;
 }
 
 export async function setJournalItemEnabled(db: SQLiteDatabase, enabled: boolean, _date: string) {

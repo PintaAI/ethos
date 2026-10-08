@@ -2,7 +2,7 @@
   "expo": {
     "name": "ethos",
     "slug": "ethos",
-    "version": "1.1.5",
+    "version": "1.1.7",
     "orientation": "portrait",
     "icon": "./assets/images/ios-icon-default.png",
     "scheme": "ethos",
@@ -181,7 +181,10 @@
             ]
           }
         }
-      ]
+      ],
+      "expo-font",
+      "expo-image",
+      "expo-status-bar"
     ],
     "experiments": {
       "typedRoutes": true,

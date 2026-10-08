@@ -1,9 +1,12 @@
+import { archiveLifeFlow } from "./lifeflowArchive";
 import type { SQLiteDatabase } from "expo-sqlite";
 import { isJournalEnabled } from "@/data/lifeflow/journalPreference";
 import { SYSTEM_ITEM_ANCHOR_DATE, SYSTEM_ITEM_ANCHOR_TIMESTAMP } from "@/data/lifeflow/systemItems";
 
 export async function migrateUnifiedLifeFlow(db: SQLiteDatabase, _localDate: string) {
   await db.withExclusiveTransactionAsync(async (txn) => {
+    if ((await txn.getFirstAsync<{ user_version: number }>("PRAGMA user_version"))!.user_version >= 24) return;
+    await archiveLifeFlow(txn, 23);
     await txn.execAsync(`
       DROP TRIGGER IF EXISTS habits_sync_update;
       DROP TRIGGER IF EXISTS habit_logs_sync_update;
@@ -111,7 +114,7 @@ export async function migrateUnifiedLifeFlow(db: SQLiteDatabase, _localDate: str
         INSERT OR REPLACE INTO lifeflow_tombstones VALUES (OLD.management_id, 'item_exception', OLD.item_id || '|' || OLD.original_date, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
       END;
 
-      DELETE FROM app_preferences WHERE key IN ('atomic_habits_app_check_in_id', 'habits_daily_journal_id');
+
     `);
 
     const now = new Date().toISOString();
@@ -138,5 +141,6 @@ export async function migrateUnifiedLifeFlow(db: SQLiteDatabase, _localDate: str
         );
       }
     }
+    await txn.execAsync("PRAGMA user_version = 24");
   });
 }

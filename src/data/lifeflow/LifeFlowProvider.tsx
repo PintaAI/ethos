@@ -1,3 +1,4 @@
+import { notifySyncMutation, withSyncMutation } from "@/lib/sync/syncEvents";
 import { createContext, use, useCallback, useEffect, useState, type ReactNode } from "react";
 import { useSQLiteContext } from "expo-sqlite";
 import { AppState } from "react-native";
@@ -47,23 +48,27 @@ export function LifeFlowProvider({ children }: { children: ReactNode }) {
   const [exceptions, setExceptions] = useState<ItemException[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const refresh = useCallback(async (reconcileNotifications = false) => withDbLock(async () => {
-    const currentDate = toDateKey(new Date());
-    setToday(currentDate);
-    await ensureAppCheckInItem(db, currentDate);
-    const historyStart = addDaysToDateKey(currentDate, -370);
-    const [nextItems, nextLogs, nextExceptions] = await Promise.all([
-      listItems(db), listUnifiedHabitLogs(db, historyStart), listItemExceptions(db),
-    ]);
-    setItems(nextItems);
-    setHabitLogs(nextLogs);
-    setExceptions(nextExceptions);
-    if (reconcileNotifications) {
-      await reconcileItemOccurrenceNotificationsAsync(resolveItemOccurrences(currentDate, 14, nextItems, nextExceptions, nextLogs)).catch((error) => {
-        console.warn("Failed to reconcile item notifications", error);
-      });
-    }
-  }), [db]);
+  const refresh = useCallback(async (reconcileNotifications = false) => {
+    const recordedCheckIn = await withDbLock(async () => {
+      const currentDate = toDateKey(new Date());
+      setToday(currentDate);
+      const recordedCheckIn = await ensureAppCheckInItem(db, currentDate);
+      const historyStart = addDaysToDateKey(currentDate, -370);
+      const [nextItems, nextLogs, nextExceptions] = await Promise.all([
+        listItems(db), listUnifiedHabitLogs(db, historyStart), listItemExceptions(db),
+      ]);
+      setItems(nextItems);
+      setHabitLogs(nextLogs);
+      setExceptions(nextExceptions);
+      if (reconcileNotifications) {
+        await reconcileItemOccurrenceNotificationsAsync(resolveItemOccurrences(currentDate, 14, nextItems, nextExceptions, nextLogs)).catch((error) => {
+          console.warn("Failed to reconcile item notifications", error);
+        });
+      }
+      return recordedCheckIn;
+    });
+    if (recordedCheckIn) notifySyncMutation();
+  }, [db]);
 
   useEffect(() => {
     const timeout = setTimeout(() => {
@@ -104,12 +109,12 @@ export function LifeFlowProvider({ children }: { children: ReactNode }) {
     loading,
     refresh: refreshFromSync,
     createItem: async (input) => {
-      const created = await withDbLock(() => createItemRecord(db, input));
+      const created = await withSyncMutation(() => createItemRecord(db, input));
       await refresh();
       return created;
     },
-    updateItem: async (id, input, resetHistory) => { await withDbLock(() => updateItemRecord(db, id, input, resetHistory)); await refresh(true); },
-    deleteItem: async (id) => { await withDbLock(() => deleteItemRecord(db, id)); await refresh(true); },
+    updateItem: async (id, input, resetHistory) => { await withSyncMutation(() => updateItemRecord(db, id, input, resetHistory)); await refresh(true); },
+    deleteItem: async (id) => { await withSyncMutation(() => deleteItemRecord(db, id)); await refresh(true); },
     setHabitCompleted: async (itemId, date, completed) => {
       const now = new Date().toISOString();
       setHabitLogs((current) => {
@@ -120,21 +125,21 @@ export function LifeFlowProvider({ children }: { children: ReactNode }) {
       });
 
       try {
-        await withDbLock(() => setUnifiedHabitCompleted(db, itemId, date, completed));
+        await withSyncMutation(() => setUnifiedHabitCompleted(db, itemId, date, completed));
       } catch (error) {
         await refresh().catch((refreshError) => console.warn("Failed to roll back optimistic habit update", refreshError));
         throw error;
       }
     },
     recordJournalActivity: async () => {
-      await withDbLock(() => recordUnifiedJournalActivity(db, toDateKey(new Date())));
+      await withSyncMutation(() => recordUnifiedJournalActivity(db, toDateKey(new Date())));
       await refresh();
     },
-    recordAppCheckIn: async () => { await withDbLock(() => ensureAppCheckInItem(db, toDateKey(new Date()))); await refresh(); },
-    setJournalItemEnabled: async (enabled) => { await withDbLock(() => setJournalEnabledRecord(db, enabled, toDateKey(new Date()))); await refresh(); },
-    overrideEventOccurrence: async (input) => { await withDbLock(() => overrideOccurrenceRecord(db, input)); await refresh(true); },
-    cancelEventOccurrence: async (id, date) => { await withDbLock(() => cancelOccurrenceRecord(db, id, date)); await refresh(true); },
-    restoreEventOccurrence: async (id, date) => { await withDbLock(() => restoreOccurrenceRecord(db, id, date)); await refresh(true); },
+    recordAppCheckIn: async () => { await withSyncMutation(() => ensureAppCheckInItem(db, toDateKey(new Date()))); await refresh(); },
+    setJournalItemEnabled: async (enabled) => { await withSyncMutation(() => setJournalEnabledRecord(db, enabled, toDateKey(new Date()))); await refresh(); },
+    overrideEventOccurrence: async (input) => { await withSyncMutation(() => overrideOccurrenceRecord(db, input)); await refresh(true); },
+    cancelEventOccurrence: async (id, date) => { await withSyncMutation(() => cancelOccurrenceRecord(db, id, date)); await refresh(true); },
+    restoreEventOccurrence: async (id, date) => { await withSyncMutation(() => restoreOccurrenceRecord(db, id, date)); await refresh(true); },
   };
 
   return <LifeFlowContext value={value}>{children}</LifeFlowContext>;

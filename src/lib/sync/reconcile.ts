@@ -229,9 +229,13 @@ export async function adoptLocalCategoryByMgmtAndName(
   );
   if (existing) {
     await db.runAsync(
-      `UPDATE categories SET remote_id = ?, deleted_at = NULL WHERE id = ?`,
+      `UPDATE categories SET remote_id = ?,
+         sync_status = CASE WHEN sync_status = 'pending' THEN 'updated' ELSE sync_status END
+       WHERE id = ? AND remote_id IS NULL AND deleted_at IS NULL AND management_id = ? AND name = ?`,
       remoteId,
       existing.id,
+      localManagementId,
+      name,
     );
   }
 }
@@ -249,9 +253,13 @@ export async function adoptLocalOverallBudgetByMgmtAndPeriod(
   );
   if (existing) {
     await db.runAsync(
-      `UPDATE overall_budgets SET remote_id = ?, deleted_at = NULL WHERE id = ?`,
+      `UPDATE overall_budgets SET remote_id = ?,
+         sync_status = CASE WHEN sync_status = 'pending' THEN 'updated' ELSE sync_status END
+       WHERE id = ? AND remote_id IS NULL AND deleted_at IS NULL AND management_id = ? AND period = ?`,
       remoteId,
       existing.id,
+      localManagementId,
+      period,
     );
   }
 }

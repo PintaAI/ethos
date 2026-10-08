@@ -1,3 +1,4 @@
+import { notifySyncMutation, withSyncMutation } from "@/lib/sync/syncEvents";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useSQLiteContext } from "expo-sqlite";
@@ -107,34 +108,39 @@ export function CashflowDataProvider({ children }: { children: ReactNode }) {
     setEntries(nextEntries);
   }), [db, activeManagementId]);
 
-  const refresh = useCallback(() => enqueueWalletOperation(async () => {
-    const generation = ++walletGenerationRef.current;
-    const [nextManagements, storedManagementId] = await Promise.all([listManagements(db), getActiveManagementId(db)]);
-    if (!isMountedRef.current || generation !== walletGenerationRef.current) return;
+  const refresh = useCallback(async () => {
+    let createdEntries = false;
+    await enqueueWalletOperation(async () => {
+      const generation = ++walletGenerationRef.current;
+      const [nextManagements, storedManagementId] = await Promise.all([listManagements(db), getActiveManagementId(db)]);
+      if (!isMountedRef.current || generation !== walletGenerationRef.current) return;
 
-    const storedStillExists = storedManagementId
-      ? nextManagements.some((management) => management.id === storedManagementId)
-      : false;
-    const fallbackManagementId = storedStillExists ? storedManagementId : (nextManagements[0]?.id ?? null);
+      const storedStillExists = storedManagementId
+        ? nextManagements.some((management) => management.id === storedManagementId)
+        : false;
+      const fallbackManagementId = storedStillExists ? storedManagementId : (nextManagements[0]?.id ?? null);
 
-    setManagements(nextManagements);
-    setActiveManagementIdState(fallbackManagementId);
+      setManagements(nextManagements);
+      setActiveManagementIdState(fallbackManagementId);
 
-    if (!fallbackManagementId) {
-      setCategories([]);
-      setOverallBudgets([]);
-      setQuickFills([]);
-      setRecurringEntries([]);
-      setEntries([]);
-      setIsReady(true);
-      return;
-    }
+      if (!fallbackManagementId) {
+        setCategories([]);
+        setOverallBudgets([]);
+        setQuickFills([]);
+        setRecurringEntries([]);
+        setEntries([]);
+        setIsReady(true);
+        return;
+      }
 
-    const materialized = await materializeDueRecurringEntries(db, fallbackManagementId);
-    await notifyMaterializedAutomaticEntriesAsync(materialized);
-    await loadActiveWalletData(fallbackManagementId, generation);
-    if (isMountedRef.current && generation === walletGenerationRef.current) setIsReady(true);
-  }), [db, enqueueWalletOperation, loadActiveWalletData]);
+      const materialized = await materializeDueRecurringEntries(db, fallbackManagementId);
+      createdEntries = materialized.length > 0;
+      await notifyMaterializedAutomaticEntriesAsync(materialized);
+      await loadActiveWalletData(fallbackManagementId, generation);
+      if (isMountedRef.current && generation === walletGenerationRef.current) setIsReady(true);
+    });
+    if (createdEntries) notifySyncMutation();
+  }, [db, enqueueWalletOperation, loadActiveWalletData]);
 
   const selectActiveManagement = useCallback((managementId: string) => {
     setIsSwitchingManagement(true);
@@ -214,7 +220,7 @@ export function CashflowDataProvider({ children }: { children: ReactNode }) {
     analytics: entries.length > 0 ? analytics : emptyAnalytics,
     setActiveManagementId: selectActiveManagement,
     setManagementImage: async (managementId: string, image: string | null, imageTheme: ManagementImageTheme | null) => {
-      await withDbLock(() => persistManagementImage(db, managementId, image, imageTheme));
+      await withSyncMutation(() => persistManagementImage(db, managementId, image, imageTheme));
       await refresh();
     },
     updateManagementImageTheme: async (managementId: string, imageTheme: ManagementImageTheme) => {
@@ -222,58 +228,58 @@ export function CashflowDataProvider({ children }: { children: ReactNode }) {
       await refresh();
     },
     createManagement: async (input) => {
-      const id = await withDbLock(() => insertManagement(db, input));
+      const id = await withSyncMutation(() => insertManagement(db, input));
       await refresh();
       return id;
     },
     updateManagement: async (managementId: string, input: UpdateManagementInput) => {
-      await withDbLock(() => updateManagementInRepo(db, managementId, input));
+      await withSyncMutation(() => updateManagementInRepo(db, managementId, input));
       await refresh();
     },
     deleteManagement: async (managementId: string) => {
-      await withDbLock(() => softDeleteManagement(db, managementId));
+      await withSyncMutation(() => softDeleteManagement(db, managementId));
       await refresh();
     },
     listManagementMembers: (managementId: string) => withDbLock(() => listManagementMembersFromRepo(db, managementId)),
     createCategory: async (input: CreateCategoryInput) => {
       if (!activeManagementId) return null;
-      const categoryId = await withDbLock(() => insertCategory(db, activeManagementId, input));
+      const categoryId = await withSyncMutation(() => insertCategory(db, activeManagementId, input));
       await refresh();
       return categoryId;
     },
     updateCategory: async (categoryId: string, input: UpdateCategoryInput) => {
       if (!activeManagementId) return;
-      await withDbLock(() => updateCategoryInRepo(db, activeManagementId, categoryId, input));
+      await withSyncMutation(() => updateCategoryInRepo(db, activeManagementId, categoryId, input));
       await refresh();
     },
     deleteCategory: async (id: string) => {
       if (!activeManagementId) return;
-      await withDbLock(() => softDeleteCategory(db, activeManagementId, id));
+      await withSyncMutation(() => softDeleteCategory(db, activeManagementId, id));
       await refresh();
     },
     updateOverallBudget: async (period: BudgetPeriod, nominal: number | null) => {
       if (!activeManagementId) return;
-      await withDbLock(() => persistOverallBudget(db, activeManagementId, period, nominal));
+      await withSyncMutation(() => persistOverallBudget(db, activeManagementId, period, nominal));
       await refresh();
     },
     updateCategoryBudget: async (categoryId: string, period: BudgetPeriod, nominal: number | null) => {
       if (!activeManagementId) return;
-      await withDbLock(() => persistCategoryBudget(db, activeManagementId, categoryId, period, nominal));
+      await withSyncMutation(() => persistCategoryBudget(db, activeManagementId, categoryId, period, nominal));
       await refresh();
     },
     createQuickFill: async (input: CreateQuickFillInput) => {
       if (!activeManagementId) return;
-      await withDbLock(() => insertQuickFill(db, activeManagementId, input));
+      await withSyncMutation(() => insertQuickFill(db, activeManagementId, input));
       await refresh();
     },
     deleteQuickFill: async (id: string) => {
       if (!activeManagementId) return;
-      await withDbLock(() => softDeleteQuickFill(db, activeManagementId, id));
+      await withSyncMutation(() => softDeleteQuickFill(db, activeManagementId, id));
       await refresh();
     },
     createRecurringEntry: async (input: CreateRecurringEntryInput) => {
       if (!activeManagementId) return;
-      const materialized = await withDbLock(async () => {
+      const materialized = await withSyncMutation(async () => {
         await insertRecurringEntry(db, activeManagementId, input);
         return materializeDueRecurringEntries(db, activeManagementId);
       });
@@ -282,36 +288,36 @@ export function CashflowDataProvider({ children }: { children: ReactNode }) {
     },
     deleteRecurringEntry: async (id: string) => {
       if (!activeManagementId) return;
-      await withDbLock(() => softDeleteRecurringEntry(db, activeManagementId, id));
+      await withSyncMutation(() => softDeleteRecurringEntry(db, activeManagementId, id));
       await refresh();
     },
     createEntry: async (input: CreateEntryInput) => {
       if (!activeManagementId) return;
-      await withDbLock(() => insertEntry(db, activeManagementId, input));
+      await withSyncMutation(() => insertEntry(db, activeManagementId, input));
       await refreshEntries();
     },
     updateEntry: async (id: string, input: CreateEntryInput) => {
       if (!activeManagementId) return;
-      await withDbLock(() => updateEntryInRepo(db, activeManagementId, id, input));
+      await withSyncMutation(() => updateEntryInRepo(db, activeManagementId, id, input));
       await refreshEntries();
     },
     moveEntries: async (ids: string[], targetManagementId: string) => {
       if (!activeManagementId) return;
-      await withDbLock(() => moveEntriesInRepo(db, activeManagementId, targetManagementId, ids));
+      await withSyncMutation(() => moveEntriesInRepo(db, activeManagementId, targetManagementId, ids));
       await refreshEntries();
     },
     deleteEntry: async (id: string) => {
       if (!activeManagementId) return;
-      await withDbLock(() => softDeleteEntry(db, activeManagementId, id));
+      await withSyncMutation(() => softDeleteEntry(db, activeManagementId, id));
       await refreshEntries();
     },
     deleteEntries: async (ids: string[]) => {
       if (!activeManagementId) return;
-      await withDbLock(() => deleteEntriesBulk(db, activeManagementId, ids));
+      await withSyncMutation(() => deleteEntriesBulk(db, activeManagementId, ids));
       await refreshEntries();
     },
     createTransfer: async (input) => {
-      await withDbLock(() => insertTransfer(db, input));
+      await withSyncMutation(() => insertTransfer(db, input));
       await refresh();
     },
     refresh,

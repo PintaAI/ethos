@@ -93,6 +93,8 @@ export function ItemForm({ kind }: { kind: ItemKind }) {
   const [endTime, setEndTime] = useState(
     source?.endTime ?? params.endTime ?? "10:00",
   );
+  const [notifyStart, setNotifyStart] = useState(source?.notifyStart !== false);
+  const [notifyEnd, setNotifyEnd] = useState(source?.notifyEnd !== false);
   const [breakDurations, setBreakDurations] = useState(
     source?.breakDurations ?? [],
   );
@@ -187,6 +189,8 @@ export function ItemForm({ kind }: { kind: ItemKind }) {
               color,
               startTime: timed ? startTime : null,
               endTime: timed ? endTime : null,
+              notifyStart: timed ? notifyStart : true,
+              notifyEnd: timed ? notifyEnd : true,
               breakDurations: breaks,
             },
           });
@@ -199,6 +203,8 @@ export function ItemForm({ kind }: { kind: ItemKind }) {
               startsOn,
               startTime: timed ? startTime : null,
               endTime: timed ? endTime : null,
+              notifyStart: timed ? notifyStart : true,
+              notifyEnd: timed ? notifyEnd : true,
               breakDurations: breaks,
               recurrence,
             },
@@ -396,6 +402,29 @@ export function ItemForm({ kind }: { kind: ItemKind }) {
                     setActiveTime(activeTime === "end" ? null : "end")
                   }
                   accessibilityLabel={t("timeBoxing.end")}
+                />
+              </View>
+            </View>
+            <View className="gap-2">
+              <Text className="font-bold" style={{ color: theme.colors.foreground }}>
+                {t("timeBoxing.notifications")}
+              </Text>
+              <View className="flex-row items-center justify-between">
+                <Text style={{ color: theme.colors.muted }}>{t("timeBoxing.notifyStart")}</Text>
+                <Switch
+                  accessibilityLabel={t("timeBoxing.notifyStart")}
+                  value={notifyStart}
+                  onValueChange={setNotifyStart}
+                  trackColor={{ true: theme.colors.primary }}
+                />
+              </View>
+              <View className="flex-row items-center justify-between">
+                <Text style={{ color: theme.colors.muted }}>{t("timeBoxing.notifyEnd")}</Text>
+                <Switch
+                  accessibilityLabel={t("timeBoxing.notifyEnd")}
+                  value={notifyEnd}
+                  onValueChange={setNotifyEnd}
+                  trackColor={{ true: theme.colors.primary }}
                 />
               </View>
             </View>

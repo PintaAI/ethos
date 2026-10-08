@@ -547,7 +547,9 @@ export default function EntryForm() {
             <CashflowAmountInput
               amountText={amountText}
               currencySymbol={currency.option.symbol}
-              currencyControl={<CurrencySelector amountPrefix amountEmpty={!amountText} />}
+              renderCurrencyControl={(fontSize) => (
+                <CurrencySelector amountPrefix amountEmpty={!amountText} amountFontSize={fontSize} />
+              )}
               onAmountTextChange={setAmountText}
             />
           </View>

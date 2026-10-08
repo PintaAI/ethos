@@ -1,12 +1,8 @@
+// @ts-nocheck -- Exact production iOS build20 schema runner at ae3fdf0.
 import type { SQLiteDatabase } from "expo-sqlite";
 import { withDbClearBarrier } from "@/lib/sync/dbLock";
-import { adoptLifeFlowScope, ensureLifeFlowScopeColumns } from "./lifeflowMigration22";
-import { migrateUnifiedLifeFlow } from "./lifeflowUnifiedMigration";
-import { migratePersonalLifeFlow } from "./lifeflowPersonalMigration";
-import { toDateKey } from "@/lib/date";
-import { initializeSyncStorage } from "@/lib/sync/syncStorage";
 
-const DATABASE_VERSION = 27;
+const DATABASE_VERSION = 20;
 
 async function hasColumn(db: SQLiteDatabase, table: string, column: string) {
   const columns = await db.getAllAsync<{ name: string }>(`PRAGMA table_info(${table})`);
@@ -18,12 +14,6 @@ export async function migrateCashflowDatabase(db: SQLiteDatabase) {
 
   const result = await db.getFirstAsync<{ user_version: number }>("PRAGMA user_version");
   let currentVersion = result?.user_version ?? 0;
-  // Some legacy bundles lowered user_version on startup. Inspect the actual
-  // personal layout before replaying migrations that replace LifeFlow tables.
-  if (currentVersion < 24 && await hasColumn(db, "items", "starts_on") && await hasColumn(db, "items", "management_id")) currentVersion = 24;
-  if (currentVersion < 25 && await hasColumn(db, "items", "starts_on") &&
-      !await hasColumn(db, "items", "management_id") && await hasColumn(db, "habit_logs", "item_id")) currentVersion = 25;
-
 
   if (currentVersion === 0) {
     await db.execAsync(`
@@ -49,7 +39,6 @@ export async function migrateCashflowDatabase(db: SQLiteDatabase) {
         id TEXT PRIMARY KEY NOT NULL,
         remote_id TEXT,
         name TEXT NOT NULL,
-        category TEXT,
         image TEXT,
         image_theme_json TEXT,
         created_at TEXT NOT NULL,
@@ -523,229 +512,7 @@ export async function migrateCashflowDatabase(db: SQLiteDatabase) {
     currentVersion = 20;
   }
 
-  if (currentVersion < 21) {
-    await db.withExclusiveTransactionAsync(async (txn) => {
-      if ((await txn.getFirstAsync<{ user_version: number }>("PRAGMA user_version"))!.user_version >= 21) return;
-      for (const table of ["habits", "habit_logs", "time_boxes", "day_presets", "day_preset_blocks", "day_preset_schedules", "app_preferences"]) {
-        if (!await hasColumn(txn, table, "updated_at")) {
-          await txn.execAsync(`ALTER TABLE ${table} ADD COLUMN updated_at TEXT;`);
-        }
-      }
-      await txn.execAsync(`
-        UPDATE habits SET updated_at = COALESCE(updated_at, created_at);
-        UPDATE habit_logs SET updated_at = COALESCE(updated_at, completed_at);
-        UPDATE time_boxes SET updated_at = COALESCE(updated_at, created_at);
-        UPDATE day_presets SET updated_at = COALESCE(updated_at, created_at);
-        UPDATE day_preset_blocks SET updated_at = COALESCE(updated_at, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
-        UPDATE day_preset_schedules SET updated_at = COALESCE(updated_at, created_at);
-        UPDATE app_preferences SET updated_at = COALESCE(updated_at, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
-
-        CREATE TABLE IF NOT EXISTS lifeflow_tombstones (
-          kind TEXT NOT NULL,
-          entity_id TEXT NOT NULL,
-          updated_at TEXT NOT NULL,
-          PRIMARY KEY (kind, entity_id)
-        );
-
-        CREATE TRIGGER IF NOT EXISTS habits_sync_update AFTER UPDATE ON habits
-        WHEN NEW.updated_at IS OLD.updated_at
-        BEGIN UPDATE habits SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.id; END;
-        CREATE TRIGGER IF NOT EXISTS habit_logs_sync_update AFTER UPDATE ON habit_logs
-        WHEN NEW.updated_at IS OLD.updated_at
-        BEGIN UPDATE habit_logs SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE habit_id = NEW.habit_id AND date = NEW.date; END;
-        CREATE TRIGGER IF NOT EXISTS time_boxes_sync_update AFTER UPDATE ON time_boxes
-        WHEN NEW.updated_at IS OLD.updated_at
-        BEGIN UPDATE time_boxes SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.id; END;
-        CREATE TRIGGER IF NOT EXISTS day_presets_sync_update AFTER UPDATE ON day_presets
-        WHEN NEW.updated_at IS OLD.updated_at
-        BEGIN UPDATE day_presets SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.id; END;
-        CREATE TRIGGER IF NOT EXISTS day_preset_blocks_sync_update AFTER UPDATE ON day_preset_blocks
-        WHEN NEW.updated_at IS OLD.updated_at
-        BEGIN UPDATE day_preset_blocks SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.id; END;
-        CREATE TRIGGER IF NOT EXISTS day_preset_schedules_sync_update AFTER UPDATE ON day_preset_schedules
-        WHEN NEW.updated_at IS OLD.updated_at
-        BEGIN UPDATE day_preset_schedules SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.id; END;
-
-        CREATE TRIGGER IF NOT EXISTS habits_sync_insert AFTER INSERT ON habits WHEN NEW.updated_at IS NULL
-        BEGIN UPDATE habits SET updated_at = COALESCE(NEW.created_at, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) WHERE id = NEW.id; END;
-        CREATE TRIGGER IF NOT EXISTS habit_logs_sync_insert AFTER INSERT ON habit_logs WHEN NEW.updated_at IS NULL
-        BEGIN UPDATE habit_logs SET updated_at = COALESCE(NEW.completed_at, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) WHERE habit_id = NEW.habit_id AND date = NEW.date; END;
-        CREATE TRIGGER IF NOT EXISTS time_boxes_sync_insert AFTER INSERT ON time_boxes WHEN NEW.updated_at IS NULL
-        BEGIN UPDATE time_boxes SET updated_at = COALESCE(NEW.created_at, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) WHERE id = NEW.id; END;
-        CREATE TRIGGER IF NOT EXISTS day_presets_sync_insert AFTER INSERT ON day_presets WHEN NEW.updated_at IS NULL
-        BEGIN UPDATE day_presets SET updated_at = COALESCE(NEW.created_at, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) WHERE id = NEW.id; END;
-        CREATE TRIGGER IF NOT EXISTS day_preset_blocks_sync_insert AFTER INSERT ON day_preset_blocks WHEN NEW.updated_at IS NULL
-        BEGIN UPDATE day_preset_blocks SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.id; END;
-        CREATE TRIGGER IF NOT EXISTS day_preset_schedules_sync_insert AFTER INSERT ON day_preset_schedules WHEN NEW.updated_at IS NULL
-        BEGIN UPDATE day_preset_schedules SET updated_at = COALESCE(NEW.created_at, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) WHERE id = NEW.id; END;
-        CREATE TRIGGER IF NOT EXISTS app_preferences_sync_update AFTER UPDATE ON app_preferences
-        WHEN NEW.updated_at IS OLD.updated_at
-        BEGIN UPDATE app_preferences SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE key = NEW.key; END;
-        CREATE TRIGGER IF NOT EXISTS app_preferences_sync_insert AFTER INSERT ON app_preferences WHEN NEW.updated_at IS NULL
-        BEGIN UPDATE app_preferences SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE key = NEW.key; END;
-
-        CREATE TRIGGER IF NOT EXISTS habits_sync_delete AFTER DELETE ON habits BEGIN
-          INSERT OR REPLACE INTO lifeflow_tombstones VALUES ('habit', OLD.id, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')); END;
-        CREATE TRIGGER IF NOT EXISTS habit_logs_sync_delete AFTER DELETE ON habit_logs BEGIN
-          INSERT OR REPLACE INTO lifeflow_tombstones VALUES ('habit_log', OLD.habit_id || '|' || OLD.date, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')); END;
-        CREATE TRIGGER IF NOT EXISTS time_boxes_sync_delete AFTER DELETE ON time_boxes BEGIN
-          INSERT OR REPLACE INTO lifeflow_tombstones VALUES ('time_box', OLD.id, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')); END;
-        CREATE TRIGGER IF NOT EXISTS day_presets_sync_delete AFTER DELETE ON day_presets BEGIN
-          INSERT OR REPLACE INTO lifeflow_tombstones VALUES ('day_preset', OLD.id, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')); END;
-        CREATE TRIGGER IF NOT EXISTS day_preset_blocks_sync_delete AFTER DELETE ON day_preset_blocks BEGIN
-          INSERT OR REPLACE INTO lifeflow_tombstones VALUES ('day_preset_block', OLD.id, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')); END;
-        CREATE TRIGGER IF NOT EXISTS day_preset_schedules_sync_delete AFTER DELETE ON day_preset_schedules BEGIN
-          INSERT OR REPLACE INTO lifeflow_tombstones VALUES ('day_preset_schedule', OLD.id, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')); END;
-      `);
-      await txn.execAsync("PRAGMA user_version = 21");
-    });
-    currentVersion = 21;
-  }
-
-  if (currentVersion < 22) {
-    await db.withExclusiveTransactionAsync(async (txn) => {
-      if ((await txn.getFirstAsync<{ user_version: number }>("PRAGMA user_version"))!.user_version >= 22) return;
-      await ensureLifeFlowScopeColumns(txn);
-      const active = await txn.getFirstAsync<{ value: string }>(
-        "SELECT value FROM app_preferences WHERE key = 'active_management_id'",
-      );
-      const fallback = await txn.getFirstAsync<{ id: string }>(
-        "SELECT id FROM managements WHERE deleted_at IS NULL ORDER BY created_at, id LIMIT 1",
-      );
-      const managementId = active?.value ?? fallback?.id;
-      if (managementId) {
-        await adoptLifeFlowScope(txn, managementId);
-      }
-      await txn.execAsync(`
-        DROP TRIGGER IF EXISTS habits_sync_delete;
-        DROP TRIGGER IF EXISTS habit_logs_sync_delete;
-        DROP TRIGGER IF EXISTS time_boxes_sync_delete;
-        DROP TRIGGER IF EXISTS day_presets_sync_delete;
-        DROP TRIGGER IF EXISTS day_preset_blocks_sync_delete;
-        DROP TRIGGER IF EXISTS day_preset_schedules_sync_delete;
-
-        ALTER TABLE lifeflow_tombstones RENAME TO lifeflow_tombstones_v21;
-        CREATE TABLE lifeflow_tombstones (
-          management_id TEXT NOT NULL REFERENCES managements(id) ON DELETE CASCADE,
-          kind TEXT NOT NULL,
-          entity_id TEXT NOT NULL,
-          updated_at TEXT NOT NULL,
-          PRIMARY KEY (management_id, kind, entity_id)
-        );
-        INSERT INTO lifeflow_tombstones (management_id, kind, entity_id, updated_at)
-        SELECT COALESCE((SELECT value FROM app_preferences WHERE key = 'active_management_id'),
-                        (SELECT id FROM managements WHERE deleted_at IS NULL ORDER BY created_at, id LIMIT 1)),
-               kind, entity_id, updated_at
-        FROM lifeflow_tombstones_v21
-        WHERE EXISTS (SELECT 1 FROM managements WHERE deleted_at IS NULL);
-        DROP TABLE lifeflow_tombstones_v21;
-
-        CREATE INDEX IF NOT EXISTS habits_management_idx ON habits(management_id, created_at);
-        CREATE UNIQUE INDEX IF NOT EXISTS habits_management_system_idx ON habits(management_id, system_type) WHERE system_type IS NOT NULL;
-        CREATE INDEX IF NOT EXISTS habit_logs_management_date_idx ON habit_logs(management_id, date);
-        CREATE INDEX IF NOT EXISTS time_boxes_management_date_idx ON time_boxes(management_id, date, start_time);
-        CREATE INDEX IF NOT EXISTS day_presets_management_idx ON day_presets(management_id, created_at);
-        CREATE INDEX IF NOT EXISTS day_preset_blocks_management_idx ON day_preset_blocks(management_id, preset_id);
-        CREATE INDEX IF NOT EXISTS day_preset_schedules_management_idx ON day_preset_schedules(management_id, preset_id, active);
-
-        CREATE TRIGGER habits_management_required BEFORE INSERT ON habits WHEN NEW.management_id IS NULL BEGIN SELECT RAISE(ABORT, 'habits.management_id is required'); END;
-        CREATE TRIGGER habit_logs_management_required BEFORE INSERT ON habit_logs WHEN NEW.management_id IS NULL BEGIN SELECT RAISE(ABORT, 'habit_logs.management_id is required'); END;
-        CREATE TRIGGER time_boxes_management_required BEFORE INSERT ON time_boxes WHEN NEW.management_id IS NULL BEGIN SELECT RAISE(ABORT, 'time_boxes.management_id is required'); END;
-        CREATE TRIGGER day_presets_management_required BEFORE INSERT ON day_presets WHEN NEW.management_id IS NULL BEGIN SELECT RAISE(ABORT, 'day_presets.management_id is required'); END;
-        CREATE TRIGGER day_preset_blocks_management_required BEFORE INSERT ON day_preset_blocks WHEN NEW.management_id IS NULL BEGIN SELECT RAISE(ABORT, 'day_preset_blocks.management_id is required'); END;
-        CREATE TRIGGER day_preset_schedules_management_required BEFORE INSERT ON day_preset_schedules WHEN NEW.management_id IS NULL BEGIN SELECT RAISE(ABORT, 'day_preset_schedules.management_id is required'); END;
-
-        CREATE TRIGGER habits_sync_delete AFTER DELETE ON habits WHEN OLD.management_id IS NOT NULL BEGIN
-          INSERT OR REPLACE INTO lifeflow_tombstones VALUES (OLD.management_id, 'habit', OLD.id, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')); END;
-        CREATE TRIGGER habit_logs_sync_delete AFTER DELETE ON habit_logs WHEN OLD.management_id IS NOT NULL BEGIN
-          INSERT OR REPLACE INTO lifeflow_tombstones VALUES (OLD.management_id, 'habit_log', OLD.habit_id || '|' || OLD.date, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')); END;
-        CREATE TRIGGER time_boxes_sync_delete AFTER DELETE ON time_boxes WHEN OLD.management_id IS NOT NULL BEGIN
-          INSERT OR REPLACE INTO lifeflow_tombstones VALUES (OLD.management_id, 'time_box', OLD.id, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')); END;
-        CREATE TRIGGER day_presets_sync_delete AFTER DELETE ON day_presets WHEN OLD.management_id IS NOT NULL BEGIN
-          INSERT OR REPLACE INTO lifeflow_tombstones VALUES (OLD.management_id, 'day_preset', OLD.id, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')); END;
-        CREATE TRIGGER day_preset_blocks_sync_delete AFTER DELETE ON day_preset_blocks WHEN OLD.management_id IS NOT NULL BEGIN
-          INSERT OR REPLACE INTO lifeflow_tombstones VALUES (OLD.management_id, 'day_preset_block', OLD.id, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')); END;
-        CREATE TRIGGER day_preset_schedules_sync_delete AFTER DELETE ON day_preset_schedules WHEN OLD.management_id IS NOT NULL BEGIN
-          INSERT OR REPLACE INTO lifeflow_tombstones VALUES (OLD.management_id, 'day_preset_schedule', OLD.id, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')); END;
-
-
-      `);
-      await txn.execAsync("PRAGMA user_version = 22");
-    });
-    currentVersion = 22;
-  }
-
-  if (currentVersion < 23) {
-    await db.withExclusiveTransactionAsync(async (txn) => {
-      if ((await txn.getFirstAsync<{ user_version: number }>("PRAGMA user_version"))!.user_version >= 23) return;
-      if (!(await hasColumn(txn, "managements", "category"))) {
-        await txn.execAsync("ALTER TABLE managements ADD COLUMN category TEXT;");
-      }
-      await txn.execAsync("PRAGMA user_version = 23");
-    });
-    currentVersion = 23;
-  }
-
-  if (currentVersion < 24) {
-    await migrateUnifiedLifeFlow(db, toDateKey(new Date()));
-    currentVersion = 24;
-  }
-
-  if (currentVersion < 25) {
-    await migratePersonalLifeFlow(db);
-    currentVersion = 25;
-  }
-
-  if (currentVersion < 26) {
-    await db.withExclusiveTransactionAsync(async (txn) => {
-      await txn.execAsync(`
-        DELETE FROM entries
-        WHERE remote_id IS NOT NULL
-          AND rowid NOT IN (
-            SELECT CASE
-              WHEN SUM(CASE WHEN sync_status != 'synced' THEN 1 ELSE 0 END) > 0
-                THEN MAX(CASE WHEN sync_status != 'synced' THEN rowid END)
-              ELSE MAX(rowid)
-            END
-            FROM entries WHERE remote_id IS NOT NULL GROUP BY remote_id
-          );
-        CREATE UNIQUE INDEX IF NOT EXISTS entries_remote_id_unique_idx
-          ON entries(remote_id) WHERE remote_id IS NOT NULL;
-        CREATE INDEX IF NOT EXISTS entries_sync_management_updated_idx
-          ON entries(sync_status, management_id, updated_at);
-        CREATE INDEX IF NOT EXISTS entries_management_remote_idx
-          ON entries(management_id, remote_id);
-        CREATE TABLE IF NOT EXISTS entry_sync_seen (
-          management_id TEXT NOT NULL,
-          remote_id TEXT NOT NULL,
-          PRIMARY KEY (management_id, remote_id)
-        );
-      `);
-    });
-    currentVersion = 26;
-  }
-
-  if (currentVersion < 27) {
-    await db.withExclusiveTransactionAsync(async (txn) => {
-      if ((await txn.getFirstAsync<{ user_version: number }>("PRAGMA user_version"))!.user_version >= 27) return;
-      if (!(await hasColumn(txn, "items", "notify_start"))) {
-        await txn.execAsync("ALTER TABLE items ADD COLUMN notify_start INTEGER NOT NULL DEFAULT 1;");
-      }
-      if (!(await hasColumn(txn, "items", "notify_end"))) {
-        await txn.execAsync("ALTER TABLE items ADD COLUMN notify_end INTEGER NOT NULL DEFAULT 1;");
-      }
-      await txn.execAsync("PRAGMA user_version = 27");
-    });
-    currentVersion = 27;
-  }
-
-  // An older OTA must not lower the marker of a newer, compatible database.
-  await db.withExclusiveTransactionAsync(async (txn) => {
-    const actual = await txn.getFirstAsync<{ user_version: number }>("PRAGMA user_version");
-    await txn.execAsync(`PRAGMA user_version = ${Math.max(actual?.user_version ?? 0, currentVersion, DATABASE_VERSION)}`);
-  });
-  await db.execAsync("CREATE TABLE IF NOT EXISTS lifeflow_migration_archive (stage INTEGER NOT NULL, source_table TEXT NOT NULL, row_json TEXT NOT NULL, PRIMARY KEY(stage, source_table, row_json))");
-  await initializeSyncStorage(db);
+  await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
 }
 
 export async function clearCashflowDatabase(db: SQLiteDatabase) {
@@ -758,22 +525,17 @@ export async function clearCashflowDatabase(db: SQLiteDatabase) {
       DELETE FROM categories;
       DELETE FROM audit_snapshots;
       DELETE FROM management_members;
+      DELETE FROM managements;
+      DELETE FROM users;
       DELETE FROM note_drafts;
       DELETE FROM note_cache;
       DELETE FROM habit_logs;
-      DELETE FROM item_exceptions;
-      DELETE FROM items;
-      DELETE FROM lifeflow_tombstones;
-      DELETE FROM managements;
-      DELETE FROM users;
+      DELETE FROM habits;
+      DELETE FROM time_boxes;
+      DELETE FROM day_preset_schedules;
+      DELETE FROM day_preset_blocks;
+      DELETE FROM day_presets;
       DELETE FROM app_preferences;
-      DELETE FROM lifeflow_migration_archive;
-      DELETE FROM lifeflow_sync_outbox;
-      DELETE FROM lifeflow_remote_versions;
-      DELETE FROM lifeflow_sync_inbox;
-      DELETE FROM sync_cursors;
-      DELETE FROM sync_metadata_versions;
-      UPDATE sync_control SET owner = NULL, suppress = 0, initialized = 1 WHERE id = 1;
     `);
   }));
 }

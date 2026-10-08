@@ -1,6 +1,6 @@
 # Expo HAS CHANGED
 
-Read the exact versioned docs at https://docs.expo.dev/versions/v56.0.0/ before writing any code.
+Read the exact versioned docs at https://docs.expo.dev/versions/v57.0.0/ before writing any code. Consult https://docs.expo.dev/versions/v56.0.0/ when checking compatibility with the older SDK 56 builds.
 
 ## Template Identity
 
@@ -14,7 +14,7 @@ Read the exact versioned docs at https://docs.expo.dev/versions/v56.0.0/ before 
 
 ## Project Setup
 
-- Expo SDK 56 with Expo Router, React 19.2.3, React Native 0.85.3, TypeScript 6.0.
+- Expo SDK 57 with Expo Router, React 19.2.3, React Native 0.86.3, TypeScript 6.0.
 - NativeWind v5 preview with Tailwind CSS v4 and `react-native-css` v3, using CSS-based config without a Babel transform.
 - Dev-client mode is the default local development target.
 - Tunnel mode is default for native dev server; `@expo/ngrok` is installed locally.
@@ -102,6 +102,7 @@ src/
   `CI=1 eas update --channel production --environment production --platform ios --message "<message>" --non-interactive`
 - `--non-interactive` still prints an Expo CLI warning; setting `CI=1` is the important part for export automation.
 - EAS Update only ships JS/assets to builds with the same runtime version. Because `runtimeVersion.policy = appVersion`, native/config/dependency changes usually require a new EAS build instead.
+- The sync migration and SDK 57 candidate uses app/runtime **1.1.7**. Ship its OTA updates only to that native baseline; production runtime1.1.5 and SDK 56 development runtime1.1.6 are incompatible. See `research/ethos-sync-release.md` for the migration and release sequence.
 - Record the Android/iOS update group dashboard URLs in the final response after publishing.
 
 ## Common Commands
@@ -127,7 +128,7 @@ src/
 ## NativeWind / Tailwind v4 Setup
 
 - **Pipeline:** `postcss.config.mjs` -> `@tailwindcss/postcss` | `metro.config.js` -> `withNativewind(config)` | `nativewind-env.d.ts` -> `react-native-css/types`
-- **No `babel.config.js`:** Expo SDK 56 handles Babel internally via Expo Router entry.
+- **No `babel.config.js`:** Expo SDK 57 handles Babel internally via Expo Router entry.
 - **No `tailwind.config.*`:** Tailwind v4 uses CSS-based config via `@theme` directives.
 - Theme tokens live in `src/global.css` and runtime values are provided by `VariableContextProvider` in `src/components/ThemeProvider.tsx`.
 - For `Pressable` surfaces that must visibly render a background or border, use a plain `style={{ ... }}` object like `CashflowTable` rather than `style={({ pressed }) => ({ ... })}`. The callback form has not applied these styles reliably through the current NativeWind/react-native-css interop; do not try to compensate by increasing opacity before checking the style delivery pattern.

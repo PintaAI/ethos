@@ -20,7 +20,7 @@ describe("unified LifeFlow sync protocol", () => {
     const sqlite = new Database(":memory:");
     sqlite.exec(`
       CREATE TABLE items (id TEXT, kind TEXT, name TEXT, color TEXT, starts_on TEXT,
-        start_time TEXT, end_time TEXT, break_durations_json TEXT, recurrence_frequency TEXT,
+        start_time TEXT, end_time TEXT, notify_start INTEGER, notify_end INTEGER, break_durations_json TEXT, recurrence_frequency TEXT,
         recurrence_interval INTEGER, recurrence_weekdays_json TEXT, recurrence_ends_on TEXT, system_type TEXT,
         created_at TEXT, updated_at TEXT);
       CREATE TABLE habit_logs (item_id TEXT, date TEXT, completed_at TEXT, updated_at TEXT);
@@ -29,8 +29,8 @@ describe("unified LifeFlow sync protocol", () => {
       CREATE TABLE lifeflow_tombstones (kind TEXT, entity_id TEXT, updated_at TEXT);
     `);
     const stamp = "2026-08-08T10:00:00.000Z";
-    sqlite.query("INSERT INTO items VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run(
-      "event", "event", "Plan", "#5B8CFF", "2026-08-08", "09:00", "10:00", "[]",
+    sqlite.query("INSERT INTO items VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run(
+      "event", "event", "Plan", "#5B8CFF", "2026-08-08", "09:00", "10:00", 1, 0, "[]",
       "daily", 1, "[]", null, null, stamp, stamp,
     );
     sqlite.query("INSERT INTO habit_logs VALUES (?, ?, ?, ?)").run("habit", "2026-08-08", stamp, stamp);
@@ -57,7 +57,8 @@ describe("unified LifeFlow sync protocol", () => {
     assert.equal(exceptions[1].data?.cancelled, false);
     assert.equal(exceptions[1].data?.replacement_date, "2026-08-09");
     assert.deepEqual(exceptions[1].data?.replacement, {
-      name: "Same", color: "#5B8CFF", start_time: "10:00", end_time: "11:00", break_durations_json: "[]",
+      name: "Same", color: "#5B8CFF", start_time: "10:00", end_time: "11:00",
+      notify_start: true, notify_end: true, break_durations_json: "[]",
     });
     assert.equal(exceptions[2].data?.replacement_date, "2026-08-12");
     sqlite.close();
@@ -79,7 +80,7 @@ describe("unified LifeFlow sync protocol", () => {
     const sqlite = new Database(":memory:");
     sqlite.exec(`
       CREATE TABLE items (id TEXT, kind TEXT, name TEXT, color TEXT, starts_on TEXT,
-        start_time TEXT, end_time TEXT, break_durations_json TEXT, recurrence_frequency TEXT,
+        start_time TEXT, end_time TEXT, notify_start INTEGER, notify_end INTEGER, break_durations_json TEXT, recurrence_frequency TEXT,
         recurrence_interval INTEGER, recurrence_weekdays_json TEXT, recurrence_ends_on TEXT, system_type TEXT,
         created_at TEXT, updated_at TEXT, UNIQUE(id));
       CREATE TABLE habit_logs (item_id TEXT, date TEXT, completed_at TEXT, updated_at TEXT,
@@ -127,9 +128,18 @@ describe("unified LifeFlow sync protocol", () => {
     const applied = sqlite.query("SELECT cancelled, replacement_json, updated_at FROM item_exceptions WHERE item_id = 'event'").get();
     assert.equal(applied.cancelled, 0);
     assert.deepEqual(JSON.parse(applied.replacement_json), {
-      kind: "event", name: "Moved", color: "#EF4444", startTime: null, endTime: null, breakDurations: [],
+      kind: "event", name: "Moved", color: "#EF4444", startTime: null, endTime: null,
+      notifyStart: true, notifyEnd: true, breakDurations: [],
     });
     assert.equal(applied.updated_at, updatedAt);
+    const beforeReplay = sqlite.query("SELECT total_changes() AS count").get().count;
+    const snapshot = await collectLifeFlowEntities(db as never);
+    for (const entity of snapshot) await applyLifeFlowEntity(db as never, entity);
+    assert.equal(sqlite.query("SELECT total_changes() AS count").get().count, beforeReplay, "identical snapshots must not write domain rows");
+    sqlite.query("DELETE FROM items WHERE id = ?").run("event");
+    sqlite.query("INSERT INTO lifeflow_tombstones VALUES (?, ?, ?)").run("item", "event", "2026-08-09T00:00:00.000Z");
+    await applyLifeFlowEntity(db as never, snapshot.find((entity) => entity.kind === "item" && entity.id === "event")!);
+    assert.equal(sqlite.query("SELECT id FROM items WHERE id = 'event'").get(), null, "stale snapshots must not resurrect local deletes");
     sqlite.close();
   });
 });

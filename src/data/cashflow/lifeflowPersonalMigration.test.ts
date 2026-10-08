@@ -4,7 +4,7 @@ import test from "node:test";
 import { Database } from "bun:sqlite";
 import { migratePersonalLifeFlow } from "./lifeflowPersonalMigration.ts";
 
-test("personal LifeFlow migration resets wallet-scoped data without touching cashflow", async () => {
+test("personal LifeFlow migration preserves wallet-scoped data without touching cashflow", async () => {
   const sqlite = new Database(":memory:");
   sqlite.exec(`
     PRAGMA foreign_keys = ON;
@@ -26,6 +26,9 @@ test("personal LifeFlow migration resets wallet-scoped data without touching cas
   `);
   const port = {
     execAsync: async (sql: string) => { sqlite.exec(sql); },
+    getFirstAsync: async (sql: string, ...params: unknown[]) => sqlite.query(sql).get(...params),
+    getAllAsync: async (sql: string, ...params: unknown[]) => sqlite.query(sql).all(...params),
+    runAsync: async (sql: string, ...params: unknown[]) => sqlite.query(sql).run(...params),
     withExclusiveTransactionAsync: async (task: (txn: unknown) => Promise<void>) => {
       sqlite.exec("BEGIN IMMEDIATE");
       try { await task(port); sqlite.exec("COMMIT"); } catch (error) { sqlite.exec("ROLLBACK"); throw error; }
@@ -35,9 +38,9 @@ test("personal LifeFlow migration resets wallet-scoped data without touching cas
   await migratePersonalLifeFlow(port as never);
 
   assert.deepEqual(sqlite.query("SELECT * FROM entries").all(), [{ id: "entry", management_id: "wallet" }]);
-  assert.equal(sqlite.query("SELECT count(*) AS count FROM items").get().count, 0);
+  assert.equal(sqlite.query("SELECT count(*) AS count FROM items").get().count, 1);
   assert.equal(sqlite.query("SELECT count(*) AS count FROM lifeflow_tombstones").get().count, 0);
-  assert.equal(sqlite.query("SELECT value FROM app_preferences WHERE key LIKE 'lifeflow_journal_enabled%'").get(), null);
+  assert.equal(sqlite.query("SELECT value FROM app_preferences WHERE key = 'lifeflow_journal_enabled'").get().value, "true");
   assert.equal(sqlite.query("PRAGMA table_info(items)").all().some((column) => column.name === "management_id"), false);
   sqlite.close();
 });

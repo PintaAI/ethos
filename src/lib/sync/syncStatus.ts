@@ -18,6 +18,17 @@ function assertTable(table: string): void {
 
 export type DirtyRow = Record<string, unknown>;
 
+function snapshotPredicate(snapshot: object) {
+  const entries = Object.entries(snapshot);
+  if (entries.length === 0 || entries.some(([column]) => !/^[a-z_]+$/.test(column))) {
+    throw new Error("syncStatus: invalid row snapshot");
+  }
+  return {
+    sql: entries.map(([column]) => `${column} IS ?`).join(" AND "),
+    values: entries.map(([, value]) => value as string | number | null),
+  };
+}
+
 export function listDirty(db: SQLiteDatabase, table: string): Promise<DirtyRow[]> {
   assertTable(table);
   return db.getAllAsync<DirtyRow>(
@@ -31,16 +42,30 @@ export async function markSynced(
   localId: string,
   remoteId: string,
   serverUpdatedAt: string | null | undefined,
-): Promise<void> {
+  sent: object,
+): Promise<number> {
   assertTable(table);
   const stamp = serverUpdatedAt ?? new Date().toISOString();
-  await db.runAsync(
-    `UPDATE ${table} SET sync_status = 'synced', remote_id = ?, last_synced_at = ?, updated_at = ? WHERE id = ?`,
+  const match = snapshotPredicate(sent);
+  // One atomic statement: acknowledge only the sent payload, including edits
+  // sharing its timestamp. A successful create must still attach its remote ID
+  // to a later edit/delete so that the next run updates/deletes that same row.
+  const result = await db.runAsync(
+    `UPDATE ${table} SET
+       sync_status = CASE WHEN ${match.sql} THEN 'synced'
+         WHEN sync_status = 'pending' THEN 'updated' ELSE sync_status END,
+       updated_at = CASE WHEN ${match.sql} THEN ? ELSE updated_at END,
+       remote_id = ?, last_synced_at = ?
+     WHERE id = ? AND (remote_id IS NULL OR remote_id = ?)`,
+    ...match.values,
+    ...match.values,
+    stamp,
     remoteId,
     stamp,
-    stamp,
     localId,
+    remoteId,
   );
+  return result.changes;
 }
 
 export async function markDeleted(db: SQLiteDatabase, table: string, localId: string): Promise<void> {
@@ -101,47 +126,60 @@ export async function upsertByRemoteId(
   table: string,
   remoteId: string,
   fields: UpsertFields,
-): Promise<void> {
+  authoritative = false,
+): Promise<number> {
   assertTable(table);
   if (!remoteId) throw new Error("upsertByRemoteId: remote_id is required");
 
   const columns = Object.keys(fields);
 
+  let changes = 0;
   await db.withExclusiveTransactionAsync(async (txn) => {
-    const existing = await txn.getFirstAsync<{ id: string }>(
-      `SELECT id FROM ${table} WHERE remote_id = ? LIMIT 1`,
+    const existing = await txn.getFirstAsync<Record<string, SQLiteBindValue> & { id: string; sync_status: string; updated_at: string }>(
+      `SELECT * FROM ${table} WHERE remote_id = ? LIMIT 1`,
       remoteId,
     );
 
     if (existing) {
       if (columns.length === 0) return;
+      // Recheck inside the write transaction. Locally dirty state is an overlay
+      // until acknowledged, even if the server/device clocks disagree.
+      if (existing.sync_status !== "synced") return;
+      if (!authoritative && typeof fields.updated_at === "string" && Date.parse(fields.updated_at) <= Date.parse(existing.updated_at)) return;
+      if (columns.filter((column) => column !== "last_synced_at" && (!authoritative || column !== "updated_at")).every((column) => fields[column] === existing[column])) return;
       const setClause = columns.map((c) => `${c} = ?`).join(", ");
       const values = columns.map((c) => fields[c]);
-      await txn.runAsync(
+      const result = await txn.runAsync(
         `UPDATE ${table} SET ${setClause}, sync_status = 'synced', remote_id = ? WHERE id = ?`,
         ...values,
         remoteId,
         existing.id,
       );
+      changes += result.changes;
       return;
     }
 
     const allColumns = [...columns, "remote_id"];
     const placeholders = allColumns.map(() => "?").join(", ");
     const values = allColumns.map((c) => (c === "remote_id" ? remoteId : fields[c]));
-    await txn.runAsync(
+    const result = await txn.runAsync(
       `INSERT INTO ${table} (${allColumns.join(", ")}, sync_status) VALUES (${placeholders}, 'synced')`,
       ...values,
     );
+    changes += result.changes;
   });
+  return changes;
 }
 
-export async function hardDeleteByRemoteId(db: SQLiteDatabase, table: string, remoteId: string): Promise<void> {
+export async function hardDeleteByRemoteId(db: SQLiteDatabase, table: string, remoteId: string): Promise<number> {
   assertTable(table);
-  await db.runAsync(`DELETE FROM ${table} WHERE remote_id = ?`, remoteId);
+  const result = await db.runAsync(`DELETE FROM ${table} WHERE remote_id = ? AND sync_status = 'synced'`, remoteId);
+  return result.changes;
 }
 
-export async function hardDeleteById(db: SQLiteDatabase, table: string, localId: string): Promise<void> {
+export async function hardDeleteById(db: SQLiteDatabase, table: string, localId: string, sent: object): Promise<number> {
   assertTable(table);
-  await db.runAsync(`DELETE FROM ${table} WHERE id = ?`, localId);
+  const match = snapshotPredicate(sent);
+  const result = await db.runAsync(`DELETE FROM ${table} WHERE id = ? AND sync_status = 'deleted' AND ${match.sql}`, localId, ...match.values);
+  return result.changes;
 }

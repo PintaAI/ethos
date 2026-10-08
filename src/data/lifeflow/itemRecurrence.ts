@@ -106,6 +106,8 @@ function baseOccurrence(item: Item, originalDate: string): ItemOccurrence {
     color: item.color,
     startTime: item.startTime,
     endTime: item.endTime,
+    notifyStart: item.notifyStart !== false,
+    notifyEnd: item.notifyEnd !== false,
     breakDurations: [...item.breakDurations],
     completed: false,
     overridden: false,

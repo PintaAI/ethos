@@ -1,5 +1,5 @@
-import type { ReactNode } from "react";
-import { Pressable, TextInput, View } from "react-native";
+import { useState, type ReactNode } from "react";
+import { Pressable, Text as RNText, TextInput, View } from "react-native";
 
 import { AppText as Text } from "@/components/AppText";
 import { useAppTheme } from "@/components/provider/AppTheme";
@@ -17,27 +17,52 @@ export function formatAmountDigits(value: string) {
 export function CashflowAmountInput({
   amountText,
   currencySymbol,
-  currencyControl,
+  renderCurrencyControl,
   onAmountTextChange,
 }: {
   amountText: string;
   currencySymbol: string;
-  currencyControl?: ReactNode;
+  renderCurrencyControl?: (fontSize: number) => ReactNode;
   onAmountTextChange: (value: string) => void;
 }) {
   const appTheme = useAppTheme();
+  const [containerWidth, setContainerWidth] = useState(0);
+  const [measuredAmountWidth, setMeasuredAmountWidth] = useState(0);
   const formattedAmount = formatAmountDigits(amountText || "0");
+  const amountUnits = [...formattedAmount].reduce(
+    (width, character) => width + (character === "." ? 0.28 : 0.56),
+    0,
+  );
+  const symbolUnits = [...currencySymbol].reduce((width) => width + 0.65, 0);
+  const usableWidth = Math.max(200, containerWidth - 36);
+  const amountFontSize = Math.max(30, Math.min(72, usableWidth / (amountUnits + symbolUnits)));
   const inputWidth = Math.min(
-    280,
-    Math.max(48, [...formattedAmount].reduce((width, character) => width + (character === "." ? 20 : 43), 8)),
+    usableWidth,
+    Math.max(amountFontSize * 0.7, measuredAmountWidth > 0 ? measuredAmountWidth + 4 : amountUnits * amountFontSize + 8),
   );
 
-  if (currencyControl) {
+  if (renderCurrencyControl) {
     return (
-      <View className="h-24 w-full flex-row items-center justify-center">
-        {currencyControl}
+      <View
+        className="h-24 w-full flex-row items-center justify-center"
+        onLayout={(event) => setContainerWidth(event.nativeEvent.layout.width)}
+      >
+        <RNText
+          numberOfLines={1}
+          onLayout={(event) => setMeasuredAmountWidth(event.nativeEvent.layout.width)}
+          style={{
+            fontSize: amountFontSize,
+            fontWeight: "700",
+            letterSpacing: amountFontSize * -0.025,
+            lineHeight: amountFontSize * 1.167,
+            opacity: 0,
+            position: "absolute",
+          }}
+        >
+          {formattedAmount}
+        </RNText>
+        {renderCurrencyControl(amountFontSize)}
         <TextInput
-          className="text-7xl font-bold tracking-tight"
           inputMode="numeric"
           keyboardType="number-pad"
           placeholder="0"
@@ -45,12 +70,12 @@ export function CashflowAmountInput({
           selectionColor={appTheme.colors.primary}
           style={{
             color: appTheme.colors.foreground,
-            fontSize: 72,
+            fontSize: amountFontSize,
             fontWeight: "700",
             height: 96,
             includeFontPadding: false,
-            letterSpacing: -1.8,
-            lineHeight: 84,
+            letterSpacing: amountFontSize * -0.025,
+            lineHeight: amountFontSize * 1.167,
             paddingHorizontal: 0,
             paddingVertical: 0,
             textAlign: "left",

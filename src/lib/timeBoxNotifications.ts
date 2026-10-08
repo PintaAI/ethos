@@ -38,6 +38,8 @@ type TimedNotificationOccurrence = {
   breakDurations: number[];
   color: string | null;
   completed: boolean;
+  notifyStart: boolean;
+  notifyEnd: boolean;
 };
 
 export function reconcileItemOccurrenceNotificationsAsync(
@@ -55,6 +57,8 @@ export function reconcileItemOccurrenceNotificationsAsync(
     breakDurations: [...occurrence.breakDurations],
     color: occurrence.color,
     completed: occurrence.kind === "habit" && occurrence.completed,
+    notifyStart: occurrence.notifyStart !== false,
+    notifyEnd: occurrence.notifyEnd !== false,
   })), options);
 }
 
@@ -170,6 +174,9 @@ function createEvents(box: TimedNotificationOccurrence): TimeBoxNotificationEven
       body: i18n.t("timeBoxing.endNotificationBody", { endTime: box.endTime }),
     },
   ];
+  const selectedBlockEvents = blockEvents.filter((event) =>
+    event.event === "start" ? box.notifyStart : box.notifyEnd,
+  );
   const breakEvents = getTimeBoxBreakRanges(box.startTime, box.endTime, box.breakDurations).flatMap((timeBoxBreak, index): TimeBoxNotificationEvent[] => [
     {
       box,
@@ -189,7 +196,7 @@ function createEvents(box: TimedNotificationOccurrence): TimeBoxNotificationEven
       body: i18n.t("timeBoxing.breakResumeNotificationBody", { title: box.title }),
     },
   ]);
-  return [...blockEvents, ...breakEvents];
+  return [...selectedBlockEvents, ...breakEvents];
 }
 
 function dateAtTime(dateKey: string, time: string) {

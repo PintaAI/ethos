@@ -36,7 +36,9 @@ async function runSyncBackgroundAsync() {
         return opened;
       }, lockGeneration);
       if (expired) return BackgroundTask.BackgroundTaskResult.Failed;
-      const summary = await syncNow(db, { signal: abortController.signal, generation: lockGeneration });
+      const session = await authClient.getSession();
+      if (!session.data?.user.id) return BackgroundTask.BackgroundTaskResult.Success;
+      const summary = await syncNow(db, { signal: abortController.signal, generation: lockGeneration, accountId: session.data.user.id });
       return !expired && summary.errors === 0
         ? BackgroundTask.BackgroundTaskResult.Success
         : BackgroundTask.BackgroundTaskResult.Failed;

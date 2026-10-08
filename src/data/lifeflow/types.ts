@@ -18,6 +18,9 @@ export type Item = {
   startsOn: string;
   startTime: string | null;
   endTime: string | null;
+  /** Whether notifications should be scheduled for the beginning/end of a timed item. */
+  notifyStart?: boolean;
+  notifyEnd?: boolean;
   breakDurations: number[];
   recurrence: Recurrence | null;
   systemType: SystemItemType | null;
@@ -35,6 +38,7 @@ export type UnifiedHabitLog = {
 export type ItemOccurrenceSnapshot = Pick<
   Item,
   "kind" | "name" | "color" | "startTime" | "endTime" | "breakDurations"
+  | "notifyStart" | "notifyEnd"
 >;
 
 export type ItemException = {
@@ -57,7 +61,7 @@ export type ItemOccurrence = ItemOccurrenceSnapshot & {
 };
 
 export type CreateItemInput = Omit<Item, "id" | "createdAt" | "updatedAt" | "systemType">;
-export type UpdateItemInput = Partial<Pick<Item, "name" | "color" | "startsOn" | "startTime" | "endTime" | "breakDurations" | "recurrence">>;
+export type UpdateItemInput = Partial<Pick<Item, "name" | "color" | "startsOn" | "startTime" | "endTime" | "notifyStart" | "notifyEnd" | "breakDurations" | "recurrence">>;
 export type OverrideOccurrenceInput = {
   itemId: string;
   originalDate: string;

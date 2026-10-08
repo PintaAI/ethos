@@ -1,3 +1,4 @@
+import { stopSyncRequests } from "@/lib/sync/syncEvents";
 import { useState } from "react";
 import { Alert, Modal, Platform, Pressable, ScrollView, TextInput, View } from "react-native";
 import { router, Stack } from "expo-router";
@@ -47,6 +48,7 @@ export default function ProfileAccountScreen() {
     try {
       await deleteAccount();
       try {
+        await stopSyncRequests();
         await reconcileSyncBackgroundTaskAsync(false);
         await waitForSyncIdleAsync(db);
       } catch (error) {

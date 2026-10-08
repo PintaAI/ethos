@@ -1,3 +1,7 @@
+import { readLifeFlowArchive, hasLifeFlowArchive as databaseHasLifeFlowArchive } from "@/data/cashflow/lifeflowArchive";
+import { File, Paths } from "expo-file-system";
+import * as Sharing from "expo-sharing";
+import { stopSyncRequests } from "@/lib/sync/syncEvents";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, AppState, Linking } from "react-native";
@@ -29,9 +33,22 @@ export function ProfileContent() {
   const auth = useAuth();
   const db = useSQLiteContext();
   const cashflowData = useCashflowData();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const sync = useSyncStatus();
   const updates = Updates.useUpdates();
+  const [hasLifeFlowArchive, setHasLifeFlowArchive] = useState(false);
+  useEffect(() => { databaseHasLifeFlowArchive(db).then(setHasLifeFlowArchive).catch(console.warn); }, [db]);
+  const exportLifeFlowArchive = async () => {
+    let file: File | undefined;
+    try {
+      if (!await Sharing.isAvailableAsync()) throw new Error(t("profile.archiveShareUnavailable"));
+      const rows = await readLifeFlowArchive(db);
+      file = new File(Paths.cache, `ethos-lifeflow-archive-${Date.now()}.json`);
+      file.write(JSON.stringify({ format: "ethos-lifeflow-archive-v1", rows: rows.map((row) => ({ stage: row.stage, table: row.source_table, data: JSON.parse(row.row_json) })) }, null, 2));
+      await Sharing.shareAsync(file.uri, { mimeType: "application/json", UTI: "public.json" });
+    } catch (error) { Alert.alert(t("profile.exportArchive"), error instanceof Error ? error.message : String(error)); }
+    finally { if (file?.exists) file.delete(); }
+  };
   const [isCheckingForUpdate, setIsCheckingForUpdate] = useState(false);
   const [isUpdatingPhoto, setIsUpdatingPhoto] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState<boolean | null>(null);
@@ -125,6 +142,7 @@ export function ProfileContent() {
 
   const handleSignOut = async () => {
     try {
+      await stopSyncRequests();
       await reconcileSyncBackgroundTaskAsync(false);
       await waitForSyncIdleAsync(db);
     } catch (error) {
@@ -163,13 +181,22 @@ export function ProfileContent() {
           : t("profile.updateStatusUpToDate");
   const syncActionLabel = sync.status === "syncing"
     ? t("profile.syncStatusSyncing")
-    : sync.status === "error"
+    : sync.status === "error" || sync.status === "warning"
       ? t("profile.syncActionRetry")
       : t("profile.syncActionNow");
-  const syncDetail = sync.status === "error"
-    ? t("profile.syncStatusError")
+  const issueAreas = sync.issueAreas ?? [];
+  const syncIssueLabels = issueAreas.map((area) =>
+    t(`profile.syncIssueAreas.${area}`),
+  );
+  const syncIssueList = syncIssueLabels.length < 2
+    ? (syncIssueLabels[0] ?? "")
+    : `${syncIssueLabels.slice(0, -1).join(", ")} ${i18n.language === "id" ? "dan" : "and"} ${syncIssueLabels[syncIssueLabels.length - 1]}`;
+  const syncDetail = sync.status === "error" && issueAreas.includes("connection")
+    ? t("profile.syncIssueConnection")
+    : sync.status === "error"
+      ? t("profile.syncStatusError")
     : sync.status === "warning"
-      ? t("profile.syncStatusPartial")
+      ? t("profile.syncIssueDetail", { areas: syncIssueList })
     : sync.status === "syncing"
       ? ""
       : t("profile.syncStatusLastSync", { time: formatRelativeTime(sync.lastSync) });
@@ -216,6 +243,8 @@ export function ProfileContent() {
       onCheckForUpdates={() => void checkForUpdates()}
       onUpdatePhoto={updateProfilePhoto}
       onOpenPrivacyPolicy={openPrivacyPolicy}
+      hasLifeFlowArchive={hasLifeFlowArchive}
+      onExportLifeFlowArchive={() => void exportLifeFlowArchive()}
       onContactSupport={contactSupport}
       onOpenAccount={() => router.push(ACCOUNT_ROUTE)}
       onOpenFontSettings={() => router.push(FONT_SETTINGS_ROUTE)}

@@ -7,8 +7,8 @@ export const lifeFlowTables: { kind: LifeFlowKind; table: string; id: (row: Reco
   { kind: "item_exception", table: "item_exceptions", id: (row) => `${row.item_id}|${row.original_date}` },
 ];
 
-const specs: Record<LifeFlowKind, string[]> = {
-  item: ["id", "kind", "name", "color", "starts_on", "start_time", "end_time", "break_durations_json", "recurrence_frequency", "recurrence_interval", "recurrence_weekdays_json", "recurrence_ends_on", "system_type", "created_at"],
+export const lifeFlowColumns: Record<LifeFlowKind, string[]> = {
+  item: ["id", "kind", "name", "color", "starts_on", "start_time", "end_time", "notify_start", "notify_end", "break_durations_json", "recurrence_frequency", "recurrence_interval", "recurrence_weekdays_json", "recurrence_ends_on", "system_type", "created_at"],
   habit_log: ["item_id", "date", "completed_at"],
   item_exception: ["item_id", "original_date", "replacement_date", "cancelled", "replacement_json", "created_at"],
 };
@@ -24,22 +24,22 @@ function definition(kind: LifeFlowKind) {
   return lifeFlowTables.find((item) => item.kind === kind)!;
 }
 
-async function existingUpdatedAt(db: SQLiteDatabase, entity: LifeFlowSyncEntity) {
+async function existingRow(db: SQLiteDatabase, entity: LifeFlowSyncEntity) {
   const parts = identity(entity.kind, entity.id);
-  if (entity.kind === "item") return db.getFirstAsync<{ updated_at: string }>("SELECT updated_at FROM items WHERE id = ?", parts[0]);
+  if (entity.kind === "item") return db.getFirstAsync<Record<string, unknown>>("SELECT * FROM items WHERE id = ?", parts[0]);
   const secondColumn = entity.kind === "habit_log" ? "date" : "original_date";
-  return db.getFirstAsync<{ updated_at: string }>(
-    `SELECT updated_at FROM ${definition(entity.kind).table} WHERE item_id = ? AND ${secondColumn} = ?`,
+  return db.getFirstAsync<Record<string, unknown>>(
+    `SELECT * FROM ${definition(entity.kind).table} WHERE item_id = ? AND ${secondColumn} = ?`,
     ...parts,
   );
 }
 
 async function deleteEntity(db: SQLiteDatabase, entity: LifeFlowSyncEntity) {
   const parts = identity(entity.kind, entity.id);
-  if (entity.kind === "item") await db.runAsync("DELETE FROM items WHERE id = ?", parts[0]);
+  if (entity.kind === "item") return (await db.runAsync("DELETE FROM items WHERE id = ?", parts[0])).changes;
   else {
     const secondColumn = entity.kind === "habit_log" ? "date" : "original_date";
-    await db.runAsync(`DELETE FROM ${definition(entity.kind).table} WHERE item_id = ? AND ${secondColumn} = ?`, ...parts);
+    return (await db.runAsync(`DELETE FROM ${definition(entity.kind).table} WHERE item_id = ? AND ${secondColumn} = ?`, ...parts)).changes;
   }
 }
 
@@ -56,17 +56,26 @@ async function assertParent(db: SQLiteDatabase, entity: LifeFlowSyncEntity) {
   }
 }
 
-export async function applyLifeFlowEntity(db: SQLiteDatabase, entity: LifeFlowSyncEntity) {
-  const existing = await existingUpdatedAt(db, entity);
-  if (existing && existing.updated_at > entity.updatedAt) return;
+export async function applyLifeFlowEntity(db: SQLiteDatabase, entity: LifeFlowSyncEntity, authoritative = false): Promise<number> {
+  const existing = await existingRow(db, entity);
+  const tombstone = await db.getFirstAsync<{ updated_at: string }>(
+    "SELECT updated_at FROM lifeflow_tombstones WHERE kind = ? AND entity_id = ?",
+    entity.kind, entity.id,
+  );
+  const serverTime = Date.parse(entity.updatedAt);
+  if (!authoritative && existing && Date.parse(String(existing.updated_at)) > serverTime) return 0;
+  if (!authoritative && tombstone && (Date.parse(tombstone.updated_at) > serverTime || (!entity.deleted && Date.parse(tombstone.updated_at) === serverTime))) return 0;
   if (entity.deleted) {
-    await deleteEntity(db, entity);
+    const changed = await deleteEntity(db, entity);
     await db.runAsync("DELETE FROM lifeflow_tombstones WHERE kind = ? AND entity_id = ?", entity.kind, entity.id);
-    return;
+    return changed;
   }
-  if (!entity.data) return;
-  await assertParent(db, entity);
+  if (!entity.data) return 0;
   const data = { ...entity.data };
+  if (entity.kind === "item") {
+    data.notify_start = data.notify_start === false ? 0 : Number(data.notify_start ?? 1);
+    data.notify_end = data.notify_end === false ? 0 : Number(data.notify_end ?? 1);
+  }
   if (entity.kind === "item_exception") {
     data.cancelled = data.cancelled ? 1 : 0;
     const replacement = data.replacement as Record<string, unknown> | null;
@@ -76,17 +85,24 @@ export async function applyLifeFlowEntity(db: SQLiteDatabase, entity: LifeFlowSy
       color: replacement.color,
       startTime: replacement.start_time,
       endTime: replacement.end_time,
+      notifyStart: replacement.notify_start !== false && replacement.notify_start !== 0,
+      notifyEnd: replacement.notify_end !== false && replacement.notify_end !== 0,
       breakDurations: JSON.parse(String(replacement.break_durations_json)),
     });
   }
-  const columns = specs[entity.kind];
+  const columns = lifeFlowColumns[entity.kind];
+  // Equal-version replay must not fire the local update triggers. Normalize
+  // server booleans/exception JSON before checking the persisted payload.
+  if (existing && existing.updated_at === entity.updatedAt && columns.every((column) => existing[column] === data[column])) return 0;
+  await assertParent(db, entity);
   const keyColumns = entity.kind === "item" ? ["id"] : entity.kind === "habit_log" ? ["item_id", "date"] : ["item_id", "original_date"];
   const allColumns = [...columns, "updated_at"];
   const mutable = allColumns.filter((column) => !keyColumns.includes(column));
-  await db.runAsync(
+  const result = await db.runAsync(
     `INSERT INTO ${definition(entity.kind).table} (${allColumns.join(", ")}) VALUES (${allColumns.map(() => "?").join(", ")})
      ON CONFLICT(${keyColumns.join(", ")}) DO UPDATE SET ${mutable.map((column) => `${column} = excluded.${column}`).join(", ")}`,
     ...columns.map((column) => data[column] as string | number | null), entity.updatedAt,
   );
   await db.runAsync("DELETE FROM lifeflow_tombstones WHERE kind = ? AND entity_id = ?", entity.kind, entity.id);
+  return result.changes;
 }

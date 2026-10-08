@@ -18,7 +18,7 @@ function createPort(sqlite: Database) {
   return port;
 }
 
-test("unified migration destroys only LifeFlow data and preserves cashflow and notes", async () => {
+test("unified migration archives legacy LifeFlow data and preserves cashflow and notes", async () => {
   const sqlite = new Database(":memory:");
   sqlite.exec(`
     PRAGMA foreign_keys = ON;
@@ -60,6 +60,7 @@ test("unified migration destroys only LifeFlow data and preserves cashflow and n
     INSERT INTO lifeflow_tombstones VALUES ('wallet', 'habit', 'gone', 'now');
     INSERT INTO app_preferences VALUES ('atomic_habits_app_check_in_id', 'old-habit', NULL);
     INSERT INTO app_preferences VALUES ('lifeflow_journal_enabled:wallet', 'true', NULL);
+    INSERT INTO app_preferences VALUES ('lifeflow_journal_enabled', 'true', NULL);
   `);
   const preserved = ["managements", "management_members", "entries", "categories", "recurring_entries", "quick_fills", "overall_budgets", "audit_snapshots", "note_cache", "note_drafts"];
   const before = Object.fromEntries(preserved.map((table) => [table, sqlite.query(`SELECT * FROM ${table}`).all()]));
@@ -71,6 +72,7 @@ test("unified migration destroys only LifeFlow data and preserves cashflow and n
     assert.equal(sqlite.query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table), null);
   }
   assert.equal(sqlite.query("SELECT count(*) AS count FROM lifeflow_tombstones").get().count, 0);
+  assert.ok(sqlite.query("SELECT 1 FROM lifeflow_migration_archive WHERE source_table = 'habits'").get());
   assert.deepEqual(sqlite.query("SELECT id, system_type, starts_on, created_at FROM items ORDER BY system_type").all(), [
     { id: "lifeflow-app-check-in-remote-wallet", system_type: "app_check_in", starts_on: "2020-01-01", created_at: "2020-01-01T00:00:00.000Z" },
     { id: "lifeflow-journal-remote-wallet", system_type: "journal", starts_on: "2020-01-01", created_at: "2020-01-01T00:00:00.000Z" },

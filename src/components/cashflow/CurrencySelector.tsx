@@ -78,7 +78,15 @@ function CurrencySheet({ onSelect, onClose }: { onSelect: (code: string) => void
   );
 }
 
-export function CurrencySelector({ amountPrefix = false, amountEmpty = false }: { amountPrefix?: boolean; amountEmpty?: boolean }) {
+export function CurrencySelector({
+  amountPrefix = false,
+  amountEmpty = false,
+  amountFontSize = 72,
+}: {
+  amountPrefix?: boolean;
+  amountEmpty?: boolean;
+  amountFontSize?: number;
+}) {
   const [open, setOpen] = useState(false);
   const appTheme = useAppTheme();
   const { currency, setCurrency } = useCurrency();
@@ -92,7 +100,7 @@ export function CurrencySelector({ amountPrefix = false, amountEmpty = false }: 
         hitSlop={12}
         onPress={() => setOpen(true)}
         className={amountPrefix
-          ? "h-24 flex-row items-center gap-1 pr-2"
+          ? "h-24 flex-row items-center gap-1 pr-1"
           : "h-9 flex-row items-center gap-1.5 self-center rounded-full border px-3.5"}
         style={amountPrefix ? undefined : {
           backgroundColor: appTheme.isDark ? "rgba(255,255,255,0.055)" : "rgba(255,255,255,0.78)",
@@ -103,10 +111,10 @@ export function CurrencySelector({ amountPrefix = false, amountEmpty = false }: 
           <RNText
             style={{
               color: amountEmpty ? appTheme.colors.muted : appTheme.colors.foreground,
-              fontSize: 72,
+              fontSize: amountFontSize,
               fontWeight: "700",
-              letterSpacing: -1.8,
-              lineHeight: 84,
+              letterSpacing: amountFontSize * -0.025,
+              lineHeight: amountFontSize * 1.167,
               transform: [{ translateY: -4 }],
             }}
           >
@@ -119,7 +127,7 @@ export function CurrencySelector({ amountPrefix = false, amountEmpty = false }: 
         )}
         <AppSymbol
           name="chevron.down"
-          size={amountPrefix ? 14 : 11}
+          size={amountPrefix ? Math.max(10, Math.min(14, amountFontSize * 0.2)) : 11}
           tintColor={amountPrefix && !amountEmpty ? appTheme.colors.foreground : appTheme.colors.muted}
           fallback={<Text style={{ color: appTheme.colors.muted }}>▾</Text>}
         />

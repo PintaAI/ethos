@@ -51,6 +51,8 @@ export type ProfileContentBodyProps = {
   onUpdatePhoto: () => void;
   onOpenPrivacyPolicy: () => void;
   onContactSupport: () => void;
+  hasLifeFlowArchive: boolean;
+  onExportLifeFlowArchive: () => void;
   onOpenAccount: () => void;
   onOpenFontSettings: () => void;
   onOpenNotificationSettings: () => void;
@@ -80,6 +82,8 @@ export function ProfileContentBody({
   onUpdatePhoto,
   onOpenPrivacyPolicy,
   onContactSupport,
+  hasLifeFlowArchive,
+  onExportLifeFlowArchive,
   onOpenAccount,
   onOpenFontSettings,
   onOpenNotificationSettings,
@@ -393,6 +397,9 @@ export function ProfileContentBody({
           </Section>
 
           <Section title={t("profile.getHelp")}>
+            {hasLifeFlowArchive ? <Button onPress={onExportLifeFlowArchive} modifiers={[...rowModifiers, tint(appTheme.colors.primary)]}>
+              <Label title={t("profile.exportArchive")} icon={<Image systemName="square.and.arrow.up" size={SETTINGS_ICON_SIZE} color={appTheme.colors.primary} />} />
+            </Button> : null}
             <Button
               onPress={() => onOpenPrivacyPolicy ? void onOpenPrivacyPolicy() : undefined}
               modifiers={[...rowModifiers, tint(appTheme.colors.primary)]}

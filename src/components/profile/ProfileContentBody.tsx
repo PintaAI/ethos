@@ -36,6 +36,8 @@ export type ProfileContentBodyProps = {
   onUpdatePhoto: () => void;
   onOpenPrivacyPolicy: () => void;
   onContactSupport: () => void;
+  hasLifeFlowArchive: boolean;
+  onExportLifeFlowArchive: () => void;
   onOpenAccount: () => void;
   onOpenFontSettings: () => void;
   onOpenNotificationSettings: () => void;
@@ -220,6 +222,7 @@ export function ProfileContentBody(props: ProfileContentBodyProps) {
       </Section>
 
       <Section title={t("profile.support")}>
+        {props.hasLifeFlowArchive ? <Row label={t("profile.exportArchive")} icon="square.and.arrow.up" onPress={props.onExportLifeFlowArchive} /> : null}
         <Row label={t("profile.privacyPolicy")} icon="hand.raised" onPress={props.onOpenPrivacyPolicy} />
         <Row label={t("profile.contactSupport")} icon="bubble.left.and.bubble.right" onPress={props.onContactSupport} />
       </Section>

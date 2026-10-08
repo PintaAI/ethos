@@ -14,3 +14,13 @@ export function syncRefreshDecision(summary: SyncSummary) {
     lifeFlow: summary.lifeFlowChanged > 0,
   };
 }
+
+export function syncRetryDecision(error: unknown): { retry: boolean; retryAfterMs?: number } {
+  if (error instanceof Error && error.name === "DbOperationInvalidatedError") return { retry: false };
+  if (error && typeof error === "object" && "status" in error && typeof error.status === "number") {
+    const retry = error.status === 408 || error.status === 429 || error.status >= 500;
+    const retryAfterMs = "retryAfterMs" in error && typeof error.retryAfterMs === "number" ? error.retryAfterMs : undefined;
+    return { retry, retryAfterMs };
+  }
+  return { retry: error instanceof TypeError };
+}

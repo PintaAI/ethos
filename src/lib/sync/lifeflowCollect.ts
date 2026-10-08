@@ -1,12 +1,16 @@
 import type { SQLiteDatabase } from "expo-sqlite";
 import type { LifeFlowKind, LifeFlowSyncEntity } from "@/lib/api/lifeflow";
-import { lifeFlowTables } from "./lifeflowApply";
+import { lifeFlowTables, lifeFlowColumns } from "./lifeflowApply";
 
-function serializeRow(kind: LifeFlowKind, row: Record<string, unknown>) {
-  const data = row;
+export function serializeLifeFlowRow(kind: LifeFlowKind, row: Record<string, unknown>) {
+  const data = Object.fromEntries([...lifeFlowColumns[kind], "updated_at"].map((column) => [column, row[column]]));
   if (kind === "item") {
-    const { updated_at: _updatedAt, ...item } = data;
-    return item;
+    const { updated_at: _updatedAt, notify_start, notify_end, ...item } = data;
+    return {
+      ...item,
+      notify_start: notify_start !== 0 && notify_start !== false,
+      notify_end: notify_end !== 0 && notify_end !== false,
+    };
   }
   if (kind === "item_exception") {
     const { replacement_json, ...exception } = data;
@@ -21,6 +25,8 @@ function serializeRow(kind: LifeFlowKind, row: Record<string, unknown>) {
         color: replacement.color,
         start_time: replacement.start_time ?? replacement.startTime ?? null,
         end_time: replacement.end_time ?? replacement.endTime ?? null,
+        notify_start: replacement.notify_start !== false && replacement.notify_start !== 0 && replacement.notifyStart !== false,
+        notify_end: replacement.notify_end !== false && replacement.notify_end !== 0 && replacement.notifyEnd !== false,
         break_durations_json: replacement.break_durations_json ?? JSON.stringify(replacement.breakDurations ?? []),
       },
     };
@@ -40,7 +46,7 @@ export async function collectLifeFlowEntities(db: SQLiteDatabase): Promise<LifeF
         kind: definition.kind,
         id: definition.id(row),
         updatedAt,
-        data: serializeRow(definition.kind, row),
+        data: serializeLifeFlowRow(definition.kind, row),
       });
     }
   }

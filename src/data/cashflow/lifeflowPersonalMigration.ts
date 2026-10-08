@@ -1,7 +1,10 @@
+import { archiveLifeFlow, restorePersonalLifeFlow } from "./lifeflowArchive";
 import type { SQLiteDatabase } from "expo-sqlite";
 
 export async function migratePersonalLifeFlow(db: SQLiteDatabase) {
   await db.withExclusiveTransactionAsync(async (txn) => {
+    if ((await txn.getFirstAsync<{ user_version: number }>("PRAGMA user_version"))!.user_version >= 25) return;
+    await archiveLifeFlow(txn, 24);
     await txn.execAsync(`
       DROP TRIGGER IF EXISTS items_sync_update;
       DROP TRIGGER IF EXISTS habit_logs_sync_update;
@@ -88,7 +91,9 @@ export async function migratePersonalLifeFlow(db: SQLiteDatabase) {
         INSERT OR REPLACE INTO lifeflow_tombstones VALUES ('item_exception', OLD.item_id || '|' || OLD.original_date, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
       END;
 
-      DELETE FROM app_preferences WHERE key = 'lifeflow_journal_enabled' OR key LIKE 'lifeflow_journal_enabled:%';
+
     `);
+    await restorePersonalLifeFlow(txn);
+    await txn.execAsync("PRAGMA user_version = 25");
   });
 }
