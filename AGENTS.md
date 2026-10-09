@@ -17,7 +17,7 @@ Read the exact versioned docs at https://docs.expo.dev/versions/v57.0.0/ before 
 - Expo SDK 57 with Expo Router, React 19.2.3, React Native 0.86.3, TypeScript 6.0.
 - NativeWind v5 preview with Tailwind CSS v4 and `react-native-css` v3, using CSS-based config without a Babel transform.
 - Dev-client mode is the default local development target.
-- Tunnel mode is default for native dev server; `@expo/ngrok` is installed locally.
+- `bun run dev` uses HTTPS Tailscale Serve at `https://jennie-linux.tail2268a1.ts.net:8084`, proxying Metro on `127.0.0.1:8085`. Keep Serve and Metro on separate ports because Expo's port check detects Tailscale's listener. Both the manifest and bundle must advertise the HTTPS URL. Ports 8081 and 8082 serve Openchamber and Hakgyo respectively.
 - `lightningcss` is pinned to `1.30.1` via overrides for Tailwind/NativeWind CSS processing.
 - `src/global.css` imports Tailwind and NativeWind theme support.
 - `expo-router` entry point via `"main": "expo-router/entry"`.
@@ -108,7 +108,7 @@ src/
 ## Common Commands
 
 - `npm run init-template` initializes a new app from the template.
-- `npm run dev` starts the Expo dev server in dev-client mode with tunnel and cache clear.
+- `bun run dev` starts the Expo dev client server through Tailscale Serve with cache clear.
 - `npm run android` starts dev-client mode with tunnel and opens Android.
 - `npm run ios` starts dev-client mode with tunnel and opens iOS.
 - `npm run build:android` builds a local Android dev-client APK.

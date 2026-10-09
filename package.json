@@ -71,7 +71,7 @@
     "typescript": "~6.0.3"
   },
   "scripts": {
-    "dev": "expo start --dev-client --tunnel -c",
+    "dev": "tailscale serve --bg --https=8084 127.0.0.1:8085 && EXPO_UNSTABLE_HEADLESS=1 EXPO_PACKAGER_PROXY_URL=https://jennie-linux.tail2268a1.ts.net:8084 expo start --dev-client --localhost --port 8085 -c",
     "start": "expo start --dev-client --tunnel",
     "start:dev": "expo start --dev-client --tunnel",
     "init-template": "node ./scripts/init-template.js",
